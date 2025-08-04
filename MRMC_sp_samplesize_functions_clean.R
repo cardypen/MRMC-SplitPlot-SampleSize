@@ -180,6 +180,7 @@ sim_splitplot_cardy<- function(n=10,
     sim_data[[i]]<- sim_one_splitplot_cardy(mu_nondisease = mu_nondisease, 
                                        mu_disease = mu_disease, 
                                        hypothesis = hypothesis,
+                                       tau = tau,
                                        sigma_r = sigma_r, sigma_c = sigma_c,
                                        sigma_rc = sigma_rc, sigma_tr = sigma_tr,
                                        sigma_tc = sigma_tc, sigma_trc = sigma_trc, 
@@ -187,6 +188,7 @@ sim_splitplot_cardy<- function(n=10,
                                        readers_per_block = readers_per_block,
                                        blocks = blocks,
                                        modalities = modalities)
+    print(paste0("Simulated dataset ", i, " of ", n))
   }
   
   return(sim_data)
@@ -567,6 +569,16 @@ get_ustat_results<- function(list_data, total_readers = 6, modalities = 2, hypot
 find_min_sample_size_uniroot <- function(readers_per_block = 3, 
                                          blocks = 2,
                                          sigma_r = 0.011, sigma_tr = 0.03,
+                                         delta = 0.05, rangeb = 0.1, rangew = 0.05,
+                                         theta = 0.75,
+                                         mu_nondisease = 0, 
+                                         mu_disease = 1.53, 
+                                         hypothesis = "alt",
+                                         tau = 0.25, # RMH params
+                                         sigma_c = 0.1, # var_C
+                                         sigma_rc = 0.2, # var_RC
+                                         sigma_tc = 0.1,  # var_TC
+                                         sigma_trc = 0.2, # var_error
                                          n_sim = 200, target_power = 0.80) {
   
   total_readers<- readers_per_block * blocks
@@ -575,10 +587,10 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
   starting_point <- tryCatch({
     sampleSize_MRMC(endpoint = "AUC",
                     J = total_readers,
-                    delta = 0.05,
-                    rangeb = 0.1,
-                    rangew = 0.05,
-                    theta = 0.85,
+                    delta = delta,
+                    rangeb = rangeb,
+                    rangew = rangew,
+                    theta = theta,
                     r1 = 0.47,
                     power = target_power)$ORSampleSizeResults$nTotal
   }, error = function(e) {
@@ -591,10 +603,10 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
   ending_point <- tryCatch({
     sampleSize_MRMC(endpoint = "AUC",
                     J = readers_per_block,
-                    delta = 0.05,
-                    rangeb = 0.1,
-                    rangew = 0.05,
-                    theta = 0.85,
+                    delta = delta,
+                    rangeb = rangeb,
+                    rangew = rangew,
+                    theta = theta,
                     r1 = 0.47,
                     power = target_power)$ORSampleSizeResults$nTotal
   }, error = function(e) {
@@ -604,6 +616,7 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
   if (ending_point == starting_point) {
     # If the ending point is the same as the starting point, increase it by 100
     #starting_point <- max(starting_point - 100,10)
+    starting_point <- starting_point - 10
     ending_point <- ending_point + 100
   }
   
@@ -621,20 +634,26 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
                                 block_ss = block_ss,
                                 sigma_r = sigma_r,
                                 sigma_tr = sigma_tr,
+                                mu_nondisease = mu_nondisease, 
+                                mu_disease = mu_disease,
+                                tau = tau,
+                                sigma_c = sigma_c,
+                                sigma_rc = sigma_rc,
+                                sigma_tc = sigma_tc, sigma_trc = sigma_trc,
                                 hypothesis = "alt",
                                 blocks = blocks)
     
     # Extract OR parameters from sim
-    ustat_df <- pull_ustat_params(data)
+    #ustat_df <- pull_ustat_params(data)
     
-    summary_stats <- ustat_df %>%
-      summarise(
-        mean_theta = mean(theta),
-        mean_delta = mean(delta),
-        mean_rangeb = mean(rangeb),
-        mean_r1 = mean(r1),
-        power = mean(rejectNull)
-      )
+    # summary_stats <- ustat_df %>%
+    #   summarise(
+    #     mean_theta = mean(theta),
+    #     mean_delta = mean(delta),
+    #     mean_rangeb = mean(rangeb),
+    #     mean_r1 = mean(r1),
+    #     power = mean(rejectNull)
+    #   )
     
     
     # Parallel processing
@@ -645,7 +664,7 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
     
     cat("Power at block_ss =", block_ss, "is", power, "\n")
     
-    return(list(power - target_power, summary_stats))
+    return(power - target_power)
   }
   
   
@@ -656,7 +675,7 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
     return(NA)
   })
   
-  return(list(ceiling(result), summary_stats))
+  return(ceiling(result))
 }
 
 
