@@ -101,12 +101,12 @@ ss_result <- find_min_sample_size_uniroot(
   theta = selected$accuracy_level,
   mu_nondisease = 0,  # not sure where to get these (but I think they should correspond to certain accuracy levels (theta))
   mu_disease = rmh$delta2, # not sure where to get these (but I think they should correspond to certain accuracy levels (theta))
-  tau = rmh$delta1, #### this should be one of the deltas... I think the one that corresponds to the higher auc ("treament")
+  tau = rmh$delta1 - rmh$delta2, #### this should be one of the deltas... I think the one that corresponds to the higher auc ("treament")
   sigma_c = rmh$sigma_C, # var_C
   sigma_rc = rmh$sigma_RC, # var_RC
   sigma_tc = rmh$sigma_TC,  # var_TC
   sigma_trc = rmh$sigma_trc, # var_error
-  n_sim = 20,
+  n_sim = 200,
   target_power = 0.80
 )
 
