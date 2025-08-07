@@ -616,7 +616,7 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
   if (ending_point == starting_point) {
     # If the ending point is the same as the starting point, increase it by 100
     #starting_point <- max(starting_point - 100,10)
-    starting_point <- starting_point - 10
+    starting_point <- ifelse(starting_point<20, 10, starting_point - 10)
     ending_point <- ending_point + 100
   }
   

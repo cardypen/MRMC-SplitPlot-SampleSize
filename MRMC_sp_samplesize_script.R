@@ -51,8 +51,8 @@ OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
     var_R = inter_var,
     var_TR = intra_var,
     corr1 = 0.47,  # average across Rockette studies
-    corr2 = 0.430, 
-    corr3 = 0.299,
+    corr2 = 0.35, 
+    corr3 = 0.35,
     # corr2 = 0,
     # corr3 = 0,
     n0 = n0,
@@ -72,7 +72,7 @@ OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
 ################
 
 #args <- as.integer(commandArgs(trailing = TRUE))
-args <- 3
+args <- 27
 print(paste("Running scenario index:", args))
 
 # Build full grid
