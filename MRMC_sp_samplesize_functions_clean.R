@@ -536,10 +536,14 @@ ustat_analysis_forsim<- function(sim_data) {
     imrmc_analysis<-doIMRMC(df_pivoted)
     ustat<-imrmc_analysis$Ustat[3,]
     
-    ustat_ci<-c(ustat["botCIBDG"][[1]], ustat["topCIBDG"][[1]])
+    ustat_ci<-c(ustat["botCInormal"][[1]], ustat["topCInormal"][[1]])
     
-    ustat_results<-data.frame(test_statistic = ustat["AUCAminusAUCB"], 
-                              p_value = ustat["pValueBDG"], ci_lower=ustat_ci[1], 
+    ustat_results<-data.frame(AUCA = ustat["AUCA"],
+                              AUCB = ustat["AUCB"],
+                              test_statistic = ustat["AUCAminusAUCB"], 
+                              reject = ustat["rejectNormal"],
+                              p_value = ustat["pValueNormal"], 
+                              ci_lower=ustat_ci[1], 
                               ci_upper=ustat_ci[2])
     
     
@@ -658,11 +662,22 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
     
     # Parallel processing
     parms_list1 <- mclapply(data, ustat_analysis_forsim, mc.cores = detectCores() - 1)
-    pvals <- sapply(parms_list1, function(x) x$pValueBDG)
+    #print(parms_list1[[1]])
+    pvals <- sapply(parms_list1, function(x) x$pValueNormal)
+    rejection<- sapply(parms_list1, function(x) x$rejectNormal)
+    cat("P-values for block_ss =", block_ss, ":", pvals, "\n")
     power <- mean(pvals < 0.05)
+    power2<- sum(rejection)/n_sim
     
+    #check AUCs
+    mean_AUCa <- mean(sapply(parms_list1, function(x) x$AUCA))
+    mean_AUCb <- mean(sapply(parms_list1, function(x) x$AUCB))
+    
+    cat("Mean AUCs: AUC1 =", mean_AUCa, ", AUC2 =", mean_AUCb, "\n")
     
     cat("Power at block_ss =", block_ss, "is", power, "\n")
+    
+    cat("power check:", power2, "\n")
     
     return(power - target_power)
   }

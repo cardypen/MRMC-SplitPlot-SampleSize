@@ -37,8 +37,8 @@ build_OR_scenarios <- function() {
 ####################################
 
 OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
-  AUC1 <- accuracy_level
-  AUC2 <- accuracy_level - delta
+  AUC1 <- accuracy_level - delta
+  AUC2 <- accuracy_level
   n0 <- 100  # control
   n1 <- 100  # case
   
@@ -72,7 +72,7 @@ OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
 ################
 
 #args <- as.integer(commandArgs(trailing = TRUE))
-args <- 27
+args <- 11
 print(paste("Running scenario index:", args))
 
 # Build full grid
@@ -89,6 +89,21 @@ rmh <- OR_scenario_to_RMH(
   delta = selected$delta
 )
 
+# check parameter conversion
+RMH_to_OR(
+  n0 = 100, 
+  n1 = 100, 
+  b = 1,
+  delta1 = rmh$delta1,
+  delta2 = rmh$delta2,
+  var_R = rmh$sigma_r,
+  var_TR = rmh$sigma_tr,
+  var_C = rmh$sigma_C,
+  var_TC = rmh$sigma_TC,
+  var_RC = rmh$sigma_RC,
+  var_error = rmh$sigma_trc
+)
+
 # Estimate sample size via simulation
 ss_result <- find_min_sample_size_uniroot(
   readers_per_block = selected$readers,
@@ -100,15 +115,21 @@ ss_result <- find_min_sample_size_uniroot(
   rangew = var_table[[selected$observer_var]][1],
   theta = selected$accuracy_level,
   mu_nondisease = 0,  # not sure where to get these (but I think they should correspond to certain accuracy levels (theta))
-  mu_disease = rmh$delta2, # not sure where to get these (but I think they should correspond to certain accuracy levels (theta))
-  tau = rmh$delta1 - rmh$delta2, #### this should be one of the deltas... I think the one that corresponds to the higher auc ("treament")
+  mu_disease = rmh$delta1, # not sure where to get these (but I think they should correspond to certain accuracy levels (theta))
+  tau = rmh$delta2 - rmh$delta1,
   sigma_c = rmh$sigma_C, # var_C
   sigma_rc = rmh$sigma_RC, # var_RC
   sigma_tc = rmh$sigma_TC,  # var_TC
   sigma_trc = rmh$sigma_trc, # var_error
-  n_sim = 200,
+  n_sim = 20,
   target_power = 0.80
 )
+
+### feed RMH parameters back into RMH_to_OR to make sure they match the original OR parameters ### looks right
+### check average AUCs for two treatments in the simulation (using iMRMC output) 
+######## now prints average AUCs for each treatment on each run
+######## AUCs look correct
+### then if those match, check power calculation (or see if variance is too large)
 
 # Save results
 sim_results <- data.frame(
