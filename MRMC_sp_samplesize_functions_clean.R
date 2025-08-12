@@ -665,7 +665,11 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
     #print(parms_list1[[1]])
     pvals <- sapply(parms_list1, function(x) x$pValueNormal)
     rejection<- sapply(parms_list1, function(x) x$rejectNormal)
+    AUC1s <- sapply(parms_list1, function(x) x$AUCA)
+    AUC2s <- sapply(parms_list1, function(x) x$AUCB)
     cat("P-values for block_ss =", block_ss, ":", pvals, "\n")
+    cat("AUC1s:", AUC1s, "\n")
+    cat("AUC2s:", AUC2s, "\n")
     power <- mean(pvals < 0.05)
     power2<- sum(rejection)/n_sim
     
