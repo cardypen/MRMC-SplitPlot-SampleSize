@@ -72,7 +72,7 @@ OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
 ################
 
 #args <- as.integer(commandArgs(trailing = TRUE))
-args <- 11
+args <- 3
 print(paste("Running scenario index:", args))
 
 # Build full grid
@@ -121,11 +121,32 @@ ss_result <- find_min_sample_size_uniroot(
   sigma_rc = rmh$sigma_RC, # var_RC
   sigma_tc = rmh$sigma_TC,  # var_TC
   sigma_trc = rmh$sigma_trc, # var_error
-  n_sim = 20,
+  n_sim = 50,
   target_power = 0.80
 )
 
-### feed RMH parameters back into RMH_to_OR to make sure they match the original OR parameters ### looks right
+# ss_result_optim <- find_min_sample_size_optim(
+#   readers_per_block = selected$readers,
+#   blocks = 1,
+#   sigma_r = rmh$sigma_r,
+#   sigma_tr = rmh$sigma_tr,
+#   delta = rmh$delta, 
+#   rangeb = var_table[[selected$observer_var]][2], 
+#   rangew = var_table[[selected$observer_var]][1],
+#   theta = selected$accuracy_level,
+#   mu_nondisease = 0,  # not sure where to get these (but I think they should correspond to certain accuracy levels (theta))
+#   mu_disease = rmh$delta1, # not sure where to get these (but I think they should correspond to certain accuracy levels (theta))
+#   tau = rmh$delta2 - rmh$delta1,
+#   sigma_c = rmh$sigma_C, # var_C
+#   sigma_rc = rmh$sigma_RC, # var_RC
+#   sigma_tc = rmh$sigma_TC,  # var_TC
+#   sigma_trc = rmh$sigma_trc, # var_error
+#   n_sim = 50,
+#   target_power = 0.80
+# )
+
+### feed RMH parameters back into RMH_to_OR to make sure they match the original OR parameters 
+######### looks right
 ### check average AUCs for two treatments in the simulation (using iMRMC output) 
 ######## now prints average AUCs for each treatment on each run
 ######## AUCs look correct

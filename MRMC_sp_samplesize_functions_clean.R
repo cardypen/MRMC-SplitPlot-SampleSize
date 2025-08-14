@@ -51,28 +51,22 @@ sim_one_splitplot_cardy <- function( mu_nondisease = 0,
   
   #simulate each random effects term in the model (equation A2)
   #random-reader effect
-  R<-list(rnorm(readers, 0, sqrt(sigma_r)), 
-          rnorm(readers, 0, sqrt(sigma_r)))
+  R<-rnorm(readers, 0, sqrt(sigma_r))
   
   #random-case effect
-  C<- list(rnorm(total_ss, 0, sqrt(sigma_c)),
-           rnorm(total_ss, 0, sqrt(sigma_c)))
+  C<- rnorm(total_ss, 0, sqrt(sigma_c))
   
   #random modality-reader effect
-  TR<- list(rnorm(readers*modalities, 0, sqrt(sigma_tr)),
-            rnorm(readers*modalities, 0, sqrt(sigma_tr)))
+  TR<- rnorm(readers*modalities, 0, sqrt(sigma_tr))
   
   #random modality-case effect
-  TC<- list(rnorm(total_ss*modalities, 0, sqrt(sigma_tc)),
-            rnorm(total_ss*modalities, 0, sqrt(sigma_tc)))
+  TC<- rnorm(total_ss*modalities, 0, sqrt(sigma_tc))
   
   #random reader-case effect
-  RC<- list(rnorm(readers*total_ss, 0, sqrt(sigma_rc)),
-            rnorm(readers*total_ss, 0, sqrt(sigma_rc)))
+  RC<- rnorm(readers*total_ss, 0, sqrt(sigma_rc))
   
   #random effect due to pure error (also includes 3 way interaction per this paper https://pmc.ncbi.nlm.nih.gov/articles/PMC9497942/)
-  TRC<- list(rnorm(readers*total_ss*modalities, 0, sqrt(sigma_trc)),
-             rnorm(readers*total_ss*modalities, 0, sqrt(sigma_trc)))
+  TRC<- rnorm(readers*total_ss*modalities, 0, sqrt(sigma_trc))
   
   
   # even diseased/non-diseased split
@@ -110,8 +104,14 @@ sim_one_splitplot_cardy <- function( mu_nondisease = 0,
   case_block <- rep(rep(1:blocks, each = block_ss * modalities), times = readers)
   
   
-  
+
   #remove data to make split plot
+  print(paste("length reader:",length(reader)))
+  print(paste("length case:",length(case)))
+  print(paste("length truth:",length(truth)))
+  print(paste("length modality:",length(modality)))
+  print(paste("length case_block:",length(case_block)))
+  print(paste("length reader_block:",length(reader_block)))
   
   id_df <- data.frame(reader, case, truth, modality, case_block, reader_block)
   
@@ -133,16 +133,12 @@ sim_one_splitplot_cardy <- function( mu_nondisease = 0,
                            truth == "disease" & modality == 2 ~ tau_disease_m2,
                            truth == "nondisease" & modality == 1 ~ tau_nondisease_m1,
                            truth == "nondisease" & modality == 2 ~ tau_nondisease_m2),
-           R = ifelse(truth == "disease", R[[1]][reader], R[[2]][reader]),
-           C = ifelse(truth == "disease", C[[1]][case], C[[2]][case]),
-           TR =  ifelse(truth == "disease", TR[[1]][reader + (modality-1)*readers], 
-                        TR[[2]][reader + (modality-1)*readers]),
-           TC = ifelse(truth == "disease", TC[[1]][case+(modality-1)*(total_ss)], 
-                       TC[[2]][case+(modality-1)*(total_ss)]),
-           RC = ifelse(truth == "disease", RC[[1]][case + (reader-1)*total_ss], 
-                       RC[[2]][case + (reader-1)*total_ss]),
-           TRC = ifelse(truth == "disease", TRC[[1]][case + (modality-1)*total_ss + (reader-1)*total_ss*modalities], 
-                        TRC[[2]][case + (modality-1)*total_ss + (reader-1)*total_ss*modalities]),
+           R = R[reader],
+           C = C[case],
+           TR = TR[reader + (modality-1)*readers],
+           TC = TC[case+(modality-1)*(total_ss)],
+           RC = RC[case + (reader-1)*total_ss],
+           TRC = TRC[case + (modality-1)*total_ss + (reader-1)*total_ss*modalities],
            score = mu + tau + R + C + TR + TC + RC + TRC)
   
   
@@ -620,8 +616,8 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
   if (ending_point == starting_point) {
     # If the ending point is the same as the starting point, increase it by 100
     #starting_point <- max(starting_point - 100,10)
-    starting_point <- ifelse(starting_point<20, 10, starting_point - 10)
-    ending_point <- ending_point + 100
+    starting_point <- ifelse(starting_point<60, 10, starting_point - 50)
+    #ending_point <- ending_point + 100
   }
   
   print(paste("Starting point for sample size search:", starting_point))
@@ -668,31 +664,36 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
     AUC1s <- sapply(parms_list1, function(x) x$AUCA)
     AUC2s <- sapply(parms_list1, function(x) x$AUCB)
     cat("P-values for block_ss =", block_ss, ":", pvals, "\n")
-    cat("AUC1s:", AUC1s, "\n")
-    cat("AUC2s:", AUC2s, "\n")
-    power <- mean(pvals < 0.05)
-    power2<- sum(rejection)/n_sim
+    # cat("AUC1s:", AUC1s, "\n")
+    # cat("AUC2s:", AUC2s, "\n")
+    pvals <- pvals[!is.na(pvals)]  # remove NA values
+    power <- mean(pvals < 0.05, na.rm = TRUE)
+    #power2<- sum(rejection)/n_sim
     
     #check AUCs
-    mean_AUCa <- mean(sapply(parms_list1, function(x) x$AUCA))
-    mean_AUCb <- mean(sapply(parms_list1, function(x) x$AUCB))
+    mean_AUCa <- mean(sapply(parms_list1, function(x) x$AUCA), na.rm = TRUE)
+    mean_AUCb <- mean(sapply(parms_list1, function(x) x$AUCB), na.rm = TRUE)
     
     cat("Mean AUCs: AUC1 =", mean_AUCa, ", AUC2 =", mean_AUCb, "\n")
     
     cat("Power at block_ss =", block_ss, "is", power, "\n")
+    cat("Power diff at", block_ss, "is", power - target_power, "\n")
     
-    cat("power check:", power2, "\n")
+    
+    #cat("power check:", power2, "\n")
     
     return(power - target_power)
   }
   
   
-  result <- tryCatch({
-    uniroot(power_diff, lower = starting_point, upper = ending_point, tol = 0.01, trace = 1)$root
-  }, error = function(e) {
-    warning("Could not find root within given bounds.")
-    return(NA)
-  })
+  # result <- tryCatch({
+  #   uniroot(power_diff, lower = starting_point, upper = ending_point, extendInt = "yes", tol = 0.02, trace = 1)$root
+  # }, error = function(e) {
+  #   warning("Could not find root within given bounds.")
+  #   return(NA)
+  # })
+  
+  result <- uniroot(power_diff, lower = starting_point, upper = ending_point, extendInt = "yes", tol = 0.02, trace = 1)$root
   
   return(ceiling(result))
 }
@@ -701,89 +702,209 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
 
 
 ### function to find the minimum sample size using optim given readers per block, number of blocks, and other parameters
+# find_min_sample_size_optim <- function(readers_per_block = 3, 
+#                                        blocks = 2,
+#                                        sigma_r = 0.011, sigma_tr = 0.03,
+#                                        n_sim = 200, target_power = 0.80) {
+#   
+#   total_readers<- readers_per_block * blocks
+#   
+#   
+#   starting_point <- tryCatch({
+#     sampleSize_MRMC(endpoint = "AUC",
+#                     J = total_readers,
+#                     delta = 0.05,
+#                     rangeb = 0.1,
+#                     rangew = 0.05,
+#                     theta = 0.85,
+#                     r1 = 0.47)$ORSampleSizeResults$nTotal
+#   }, error = function(e) {
+#     1000
+#     #should use largest possible sample size from sampleSize_MRMC here
+#   })
+#   
+#   print(paste("Starting point for sample size search:", starting_point))
+#   
+#   
+#   ending_point <- tryCatch({
+#     sampleSize_MRMC(endpoint = "AUC",
+#                     J = readers_per_block,
+#                     delta = 0.05,
+#                     rangeb = 0.1,
+#                     rangew = 0.05,
+#                     theta = 0.85,
+#                     r1 = 0.47)$ORSampleSizeResults$nTotal
+#   }, error = function(e) {
+#     starting_point+500
+#   })
+# 
+#   ending_point <- ifelse(ending_point == starting_point, 
+#          starting_point + 100, 
+#          ending_point)
+#   
+#   print(paste("Ending point for sample size search:", ending_point))
+#   
+#   
+#   power_diff <- function(block_ss) {
+#     block_ss <- round(block_ss)  # ensure it's an integer
+#     
+#     cat("Trying block sample size:", block_ss, "\n")
+#     
+#     data <- sim_splitplot_cardy(n = n_sim,
+#                                 readers_per_block = readers_per_block,
+#                                 block_ss = block_ss,
+#                                 sigma_r = sigma_r,
+#                                 sigma_tr = sigma_tr,
+#                                 hypothesis = "alt",
+#                                 blocks = blocks)
+#     
+#     # Parallel processing
+#     parms_list1 <- mclapply(data, ustat_analysis_forsim, mc.cores = detectCores() - 1)
+#     pvals <- sapply(parms_list1, function(x) x$pValueBDG)
+#     power <- mean(pvals < 0.05)
+#     
+#     
+#     cat("Power at block_ss =", block_ss, "is", power, "\n")
+#     
+#     return(power - target_power)
+#   }
+#   
+#   
+#   result <- tryCatch({
+#     optim(fn = power_diff, 
+#           par = (starting_point + ending_point) / 2, 
+#           method = "Brent", 
+#           lower = starting_point, 
+#           upper = ending_point, 
+#           control = list(trace = 1, abstol = 0.02, reltol=1))
+#     
+#   }, error = function(e) {
+#     warning("Could not find root within given bounds.")
+#     return(NA)
+#   })
+#   
+#   return(ceiling(result))
+# }
+
+
+
+
 find_min_sample_size_optim <- function(readers_per_block = 3, 
                                        blocks = 2,
                                        sigma_r = 0.011, sigma_tr = 0.03,
+                                       delta = 0.05, rangeb = 0.1, rangew = 0.05,
+                                       theta = 0.75,
+                                       mu_nondisease = 0, 
+                                       mu_disease = 1.53, 
+                                       hypothesis = "alt",
+                                       tau = 0.25,
+                                       sigma_c = 0.1,
+                                       sigma_rc = 0.2,
+                                       sigma_tc = 0.1,
+                                       sigma_trc = 0.2,
                                        n_sim = 200, target_power = 0.80) {
   
-  total_readers<- readers_per_block * blocks
+  total_readers <- readers_per_block * blocks
   
-  
+  # Use sampleSize_MRMC to find reasonable starting/ending points
   starting_point <- tryCatch({
     sampleSize_MRMC(endpoint = "AUC",
                     J = total_readers,
-                    delta = 0.05,
-                    rangeb = 0.1,
-                    rangew = 0.05,
-                    theta = 0.85,
-                    r1 = 0.47)$ORSampleSizeResults$nTotal
-  }, error = function(e) {
-    1000
-    #should use largest possible sample size from sampleSize_MRMC here
-  })
-  
-  print(paste("Starting point for sample size search:", starting_point))
-  
+                    delta = delta,
+                    rangeb = rangeb,
+                    rangew = rangew,
+                    theta = theta,
+                    r1 = 0.47,
+                    power = target_power)$ORSampleSizeResults$nTotal
+  }, error = function(e) 60)
   
   ending_point <- tryCatch({
     sampleSize_MRMC(endpoint = "AUC",
                     J = readers_per_block,
-                    delta = 0.05,
-                    rangeb = 0.1,
-                    rangew = 0.05,
-                    theta = 0.85,
-                    r1 = 0.47)$ORSampleSizeResults$nTotal
-  }, error = function(e) {
-    starting_point+500
-  })
-
-  ending_point <- ifelse(ending_point == starting_point, 
-         starting_point + 100, 
-         ending_point)
+                    delta = delta,
+                    rangeb = rangeb,
+                    rangew = rangew,
+                    theta = theta,
+                    r1 = 0.47,
+                    power = target_power)$ORSampleSizeResults$nTotal
+  }, error = function(e) starting_point + 100)
   
-  print(paste("Ending point for sample size search:", ending_point))
-  
-  
-  power_diff <- function(block_ss) {
-    block_ss <- round(block_ss)  # ensure it's an integer
-    
-    cat("Trying block sample size:", block_ss, "\n")
-    
-    data <- sim_splitplot_cardy(n = n_sim,
-                                readers_per_block = readers_per_block,
-                                block_ss = block_ss,
-                                sigma_r = sigma_r,
-                                sigma_tr = sigma_tr,
-                                hypothesis = "alt",
-                                blocks = blocks)
-    
-    # Parallel processing
-    parms_list1 <- mclapply(data, ustat_analysis_forsim, mc.cores = detectCores() - 1)
-    pvals <- sapply(parms_list1, function(x) x$pValueBDG)
-    power <- mean(pvals < 0.05)
-    
-    
-    cat("Power at block_ss =", block_ss, "is", power, "\n")
-    
-    return(power - target_power)
+  if (ending_point == starting_point) {
+    starting_point <- max(10, starting_point - 50)
+    ending_point <- ending_point + 100
   }
   
+  par_value<- mean(c(starting_point, ending_point))
   
-  result <- tryCatch({
-    optim(fn = power_diff, 
-          par = (starting_point + ending_point) / 2, 
-          method = "Brent", 
-          lower = starting_point, 
-          upper = ending_point, 
-          control = list(trace = 1, abstol = 0.02, reltol=1))
+  cat("Starting point for sample size search:", starting_point, "\n")
+  cat("Ending point for sample size search:", ending_point, "\n")
+  
+  # Objective function: squared difference from target power
+  power_loss <- function(block_ss) {
+    block_ss <- round(block_ss)
+    cat("Trying block sample size:", block_ss, "\n")
     
-  }, error = function(e) {
-    warning("Could not find root within given bounds.")
-    return(NA)
-  })
+    result <- tryCatch({
+      
+      data <- sim_splitplot_cardy(n = n_sim,
+                                  readers_per_block = readers_per_block,
+                                  block_ss = block_ss,
+                                  sigma_r = sigma_r,
+                                  sigma_tr = sigma_tr,
+                                  mu_nondisease = mu_nondisease, 
+                                  mu_disease = mu_disease,
+                                  tau = tau,
+                                  sigma_c = sigma_c,
+                                  sigma_rc = sigma_rc,
+                                  sigma_tc = sigma_tc,
+                                  sigma_trc = sigma_trc,
+                                  hypothesis = hypothesis,
+                                  blocks = blocks)
+      
+      parms_list1 <- mclapply(data, ustat_analysis_forsim, mc.cores = detectCores() - 1)
+      
+      pvals <- sapply(parms_list1, function(x) x$pValueNormal)
+      pvals <- pvals[!is.na(pvals)]
+      power <- mean(pvals < 0.05)
+      
+      AUC1s <- sapply(parms_list1, function(x) x$AUCA)
+      AUC2s <- sapply(parms_list1, function(x) x$AUCB)
+      mean_AUCa <- mean(AUC1s, na.rm = TRUE)
+      mean_AUCb <- mean(AUC2s, na.rm = TRUE)
+      
+      cat("P-values for block_ss =", block_ss, ":", pvals, "\n")
+      cat("Mean AUCs: AUC1 =", mean_AUCa, ", AUC2 =", mean_AUCb, "\n")
+      cat("Power at block_ss =", block_ss, "is", power, "\n")
+      cat("Power diff at", block_ss, "is", power - target_power, "\n")
+      
+      if (!is.finite(power)) return(Inf)
+      return((power - target_power)^2)
+      
+    }, error = function(e) {
+      warning("Error at block_ss =", block_ss, ": ", conditionMessage(e))
+      return(Inf)
+    })
+    
+    return(result)
+  }
   
-  return(ceiling(result))
+  # Optimize to minimize squared power difference
+  opt_result <- optim(par = par_value,
+                      fn = power_loss,
+                      method = "L-BFGS-B",
+                      lower = starting_point,
+                      upper = ending_point)
+  
+  final_ss <- ceiling(opt_result$par)
+  cat("Estimated minimum sample size:", final_ss, "\n")
+  return(final_ss)
 }
+
+
+
+
+
+
 
 
 
