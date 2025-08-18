@@ -164,4 +164,4 @@ sim_results <- data.frame(
 )
 
 write.csv(sim_results, file = paste0("scenario", args, "_sp_samplesize_results.csv"), row.names = FALSE)
-print("Scenario", args, "completed")
+print(paste("Scenario", args, "completed"))

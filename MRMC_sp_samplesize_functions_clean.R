@@ -69,33 +69,61 @@ sim_one_splitplot_cardy <- function( mu_nondisease = 0,
   TRC<- rnorm(readers*total_ss*modalities, 0, sqrt(sigma_trc))
   
   
-  # even diseased/non-diseased split
-  disease_cases <- total_ss / 2  
-  nondisease_cases <- total_ss / 2 
+  # # even diseased/non-diseased split
+  # disease_cases <- total_ss / 2  
+  # nondisease_cases <- total_ss / 2 
+  # 
+  # # cases per block (rounded up to ensure every case is assigned a truth state)
+  # #block_ss <- ceiling(total_ss / blocks)
+  # 
+  # base_disease_per_block <- floor(disease_cases / blocks)
+  # base_nondisease_per_block <- floor(nondisease_cases / blocks)
+  # 
+  # extra_disease_cases <- disease_cases %% blocks
+  # extra_nondisease_cases <- nondisease_cases %% blocks
+  # 
+  # disease_distribution <- rep(base_disease_per_block, blocks)
+  # nondisease_distribution <- rep(base_nondisease_per_block, blocks)
+  # 
+  # disease_distribution[sample(1:blocks, extra_disease_cases)] <- disease_distribution[sample(1:blocks, extra_disease_cases)] + 1
+  # nondisease_distribution[sample(1:blocks, extra_nondisease_cases)] <- nondisease_distribution[sample(1:blocks, extra_nondisease_cases)] + 1
+  # 
+  # # truth assignments by block
+  # truth_blocks <- unlist(lapply(1:blocks, function(b) {
+  #   c(rep("disease", modalities * disease_distribution[b]),
+  #     rep("nondisease", modalities * nondisease_distribution[b]))
+  # }))
+  # 
+  # 
+  # truth <- rep(truth_blocks, times = readers)
   
-  # cases per block (rounded up to ensure every case is assigned a truth state)
-  block_ss <- ceiling(total_ss / blocks)
+  # target number of disease/nondisease cases overall
+  disease_total <- total_ss / 2
+  nondisease_total <- total_ss / 2
   
-  base_disease_per_block <- floor(disease_cases / blocks)
-  base_nondisease_per_block <- floor(nondisease_cases / blocks)
+  # start with floor(block_ss / 2) disease per block
+  disease_per_block <- rep(floor(block_ss / 2), blocks)
+  nondisease_per_block <- rep(block_ss, blocks) - disease_per_block
   
-  extra_disease_cases <- disease_cases %% blocks
-  extra_nondisease_cases <- nondisease_cases %% blocks
+  # adjust to ensure total matches disease_total
+  disease_adjustment <- disease_total - sum(disease_per_block)
   
-  disease_distribution <- rep(base_disease_per_block, blocks)
-  nondisease_distribution <- rep(base_nondisease_per_block, blocks)
+  if (disease_adjustment != 0) {
+    adjust_blocks <- sample(1:blocks, abs(disease_adjustment))
+    disease_per_block[adjust_blocks] <- disease_per_block[adjust_blocks] + sign(disease_adjustment)
+    nondisease_per_block[adjust_blocks] <- nondisease_per_block[adjust_blocks] - sign(disease_adjustment)
+  }
   
-  disease_distribution[sample(1:blocks, extra_disease_cases)] <- disease_distribution[sample(1:blocks, extra_disease_cases)] + 1
-  nondisease_distribution[sample(1:blocks, extra_nondisease_cases)] <- nondisease_distribution[sample(1:blocks, extra_nondisease_cases)] + 1
-  
-  # truth assignments by block
+  # create truth values for each block, expanding by modalities
   truth_blocks <- unlist(lapply(1:blocks, function(b) {
-    c(rep("disease", modalities * disease_distribution[b]),
-      rep("nondisease", modalities * nondisease_distribution[b]))
+    c(rep("disease", modalities * disease_per_block[b]),
+      rep("nondisease", modalities * nondisease_per_block[b]))
   }))
   
-
+  # expand to full reader-modality-case structure
   truth <- rep(truth_blocks, times = readers)
+  
+  
   reader <- rep(1:readers, each = total_ss * modalities)
   modality <- rep(c(1, 2), times = total_ss * readers)
   case <- rep(rep(1:total_ss, each = modalities), times = readers)
@@ -106,12 +134,12 @@ sim_one_splitplot_cardy <- function( mu_nondisease = 0,
   
 
   #remove data to make split plot
-  print(paste("length reader:",length(reader)))
-  print(paste("length case:",length(case)))
-  print(paste("length truth:",length(truth)))
-  print(paste("length modality:",length(modality)))
-  print(paste("length case_block:",length(case_block)))
-  print(paste("length reader_block:",length(reader_block)))
+  # print(paste("length reader:",length(reader)))
+  # print(paste("length case:",length(case)))
+  # print(paste("length truth:",length(truth)))
+  # print(paste("length modality:",length(modality)))
+  # print(paste("length case_block:",length(case_block)))
+  # print(paste("length reader_block:",length(reader_block)))
   
   id_df <- data.frame(reader, case, truth, modality, case_block, reader_block)
   
@@ -184,7 +212,7 @@ sim_splitplot_cardy<- function(n=10,
                                        readers_per_block = readers_per_block,
                                        blocks = blocks,
                                        modalities = modalities)
-    print(paste0("Simulated dataset ", i, " of ", n))
+    #print(paste0("Simulated dataset ", i, " of ", n))
   }
   
   return(sim_data)
