@@ -691,7 +691,7 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
     rejection<- sapply(parms_list1, function(x) x$rejectNormal)
     AUC1s <- sapply(parms_list1, function(x) x$AUCA)
     AUC2s <- sapply(parms_list1, function(x) x$AUCB)
-    cat("P-values for block_ss =", block_ss, ":", pvals, "\n")
+    # cat("P-values for block_ss =", block_ss, ":", pvals, "\n")
     # cat("AUC1s:", AUC1s, "\n")
     # cat("AUC2s:", AUC2s, "\n")
     pvals <- pvals[!is.na(pvals)]  # remove NA values
