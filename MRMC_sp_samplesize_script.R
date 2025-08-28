@@ -37,8 +37,8 @@ build_OR_scenarios <- function() {
 ####################################
 
 OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
-  AUC1 <- accuracy_level - delta
-  AUC2 <- accuracy_level
+  AUC1 <- accuracy_level - (delta/2)
+  AUC2 <- accuracy_level + (delta/2)  # make AUC1 and AUC2 symmetric around the accuracy level
   n0 <- 100  # control
   n1 <- 100  # case
   
@@ -48,11 +48,11 @@ OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
   rmh <- OR_to_RMH(
     AUC1 = AUC1,
     AUC2 = AUC2,
-    var_R = inter_var,
-    var_TR = intra_var,
+    var_R = inter_var*4, #### multiply by 4 to convert from range to var
+    var_TR = intra_var*4, #### multiply by 4 to convert from range to var
     corr1 = 0.47,  # average across Rockette studies
     corr2 = 0.35, 
-    corr3 = 0.35,
+    corr3 = 0.3,
     # corr2 = 0,
     # corr3 = 0,
     n0 = n0,
@@ -60,6 +60,8 @@ OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
     b_method = "specified",
     b_input=1
   )
+  
+  print(rmh)
   
   return(list(delta = delta, sigma_r = rmh$var_R, sigma_tr = rmh$var_TR, 
               sigma_C = rmh$var_C, sigma_TC = rmh$var_TC, sigma_RC = rmh$var_RC, 
@@ -72,6 +74,7 @@ OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
 ################
 
 #args <- as.integer(commandArgs(trailing = TRUE))
+target_power <- 0.80
 args <- 3
 print(paste("Running scenario index:", args))
 
@@ -114,16 +117,26 @@ ss_result <- find_min_sample_size_uniroot(
   rangeb = var_table[[selected$observer_var]][2], 
   rangew = var_table[[selected$observer_var]][1],
   theta = selected$accuracy_level,
-  mu_nondisease = 0,  # not sure where to get these (but I think they should correspond to certain accuracy levels (theta))
-  mu_disease = rmh$delta1, # not sure where to get these (but I think they should correspond to certain accuracy levels (theta))
+  mu_nondisease = 0,  
+  mu_disease = rmh$delta1, 
   tau = rmh$delta2 - rmh$delta1,
   sigma_c = rmh$sigma_C, # var_C
   sigma_rc = rmh$sigma_RC, # var_RC
   sigma_tc = rmh$sigma_TC,  # var_TC
   sigma_trc = rmh$sigma_trc, # var_error
-  n_sim = 50,
+  n_sim = 100,
   target_power = 0.80
 )
+
+expected_ss <- sampleSize_MRMC(endpoint = "AUC",
+                               J = selected$readers,
+                               theta = selected$accuracy_level,
+                               delta = selected$delta,
+                               rangeb = var_table[[selected$observer_var]][2],
+                               rangew = var_table[[selected$observer_var]][1],
+                               r1 = 0.47,
+                               power = target_power,
+                               reader_var_estimation_method = 1)$ORSampleSizeResults$nTotal
 
 # ss_result_optim <- find_min_sample_size_optim(
 #   readers_per_block = selected$readers,

@@ -620,7 +620,8 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
                     rangew = rangew,
                     theta = theta,
                     r1 = 0.47,
-                    power = target_power)$ORSampleSizeResults$nTotal
+                    power = target_power,
+                    reader_var_estimation_method = 1)$ORSampleSizeResults$nTotal
   }, error = function(e) {
     1000  # conservative fallback if sampleSize_MRMC fails
     #should use largest possible sample size from sampleSize_MRMC here
@@ -636,7 +637,8 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
                     rangew = rangew,
                     theta = theta,
                     r1 = 0.47,
-                    power = target_power)$ORSampleSizeResults$nTotal
+                    power = target_power,
+                    reader_var_estimation_method = 1)$ORSampleSizeResults$nTotal
   }, error = function(e) {
     starting_point+500
   })
@@ -721,9 +723,9 @@ find_min_sample_size_uniroot <- function(readers_per_block = 3,
   #   return(NA)
   # })
   
-  result <- uniroot(power_diff, lower = starting_point, upper = ending_point, extendInt = "yes", tol = 0.02, trace = 1)$root
+  result <- uniroot(power_diff, lower = starting_point, upper = ending_point, extendInt = "upX", tol = 0.05, trace = 1)$root
   
-  return(ceiling(result))
+  return(result)
 }
 
 
