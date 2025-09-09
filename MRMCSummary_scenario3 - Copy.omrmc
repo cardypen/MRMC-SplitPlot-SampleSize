@@ -1,0 +1,24 @@
+MRMC summary statistics from iMRMC Version 4.0.3
+Summary statistics based on input file named:
+/Users/cardypennington/Downloads/test_data_for_gui.csv
+
+BEGIN SUMMARY
+NReader=  200
+Nnormal=  500
+NDisease= 500
+
+Modality A = TestA
+Modality B = TestB
+
+Reader-Averaged AUCs
+AUC_A = 0.803
+AUC_B = 0.864
+
+
+
+**********************BDG Moments***************************
+         Moments,         M1,         M2,         M3,         M4,         M5,         M6,         M7,         M8
+Modality1(AUC_A), 8.03251E-1, 6.92205E-1, 6.90849E-1, 6.45139E-1, 6.94168E-1, 6.67527E-1, 6.66792E-1, 6.45123E-1,
+Modality2(AUC_B), 8.63745E-1, 7.77294E-1, 7.78684E-1, 7.45994E-1, 7.81500E-1, 7.60770E-1, 7.61959E-1, 7.45994E-1,
+    comp product, 7.39865E-1, 7.13743E-1, 7.14062E-1, 6.93745E-1, 7.27721E-1, 7.08995E-1, 7.09243E-1, 6.93743E-1,
+END SUMMARY 
