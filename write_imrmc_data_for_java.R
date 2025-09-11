@@ -44,8 +44,8 @@ OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
   rmh <- OR_to_RMH(
     AUC1 = AUC1,
     AUC2 = AUC2,
-    var_R = inter_var*4, #### multiply by 4 to convert from range to var
-    var_TR = intra_var*4, #### multiply by 4 to convert from range to var
+    var_R = (inter_var/4)^2, #### divide by 4 to convert from range to var
+    var_TR = (intra_var/4)^2, #### divide by 4 to convert from range to var
     corr1 = 0.47,  # average across Rockette studies
     corr2 = 0.35, 
     corr3 = 0.3,
@@ -96,8 +96,8 @@ test_data_for_gui <- sim_one_splitplot_cardy(mu_nondisease = 0,
                                              sigma_r = rmh$sigma_r, sigma_c = rmh$sigma_C,
                                              sigma_rc = rmh$sigma_RC, sigma_tr = rmh$sigma_tr,
                                              sigma_tc = rmh$sigma_TC, sigma_trc = rmh$sigma_trc, 
-                                             block_ss = 1000,
-                                             readers_per_block = 200,
+                                             block_ss = 100,
+                                             readers_per_block = 20,
                                              blocks = 1)
 
 test_data_for_gui_imrmc<-createIMRMCdf(test_data_for_gui,
@@ -112,8 +112,10 @@ test_data_for_gui_imrmc<-createIMRMCdf(test_data_for_gui,
          modalityID = case_when(modalityID == "truth" ~ "0",
                                 .default = modalityID))
 
+sample_imrmc<-doIMRMC(test_data_for_gui_imrmc)
 
-write.csv(test_data_for_gui_imrmc, paste0("test_data_for_gui",args,".csv"), row.names = FALSE)
+
+#write.csv(test_data_for_gui_imrmc, paste0("test_data_for_gui",args,".csv"), row.names = FALSE)
 #must use a text editor to modify csv to get it in the right format for Java
 #delete column names, remove quotation marks, add BEGIN DATA:, add header with NR: N0: N1: NM:
 
