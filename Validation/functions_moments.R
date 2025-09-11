@@ -110,8 +110,8 @@ build_sigma_sums <- function(rmh) {
       `3` = (var_TC + var_error),
       `4` = 2*(var_TC + var_error),
       `5` = 2*(var_TR + var_error),
-      `6` = 2*(var_TR + var_TC + var_error),
-      `7` = 2*(var_TR + var_TC + var_error)
+      `6` = var_TC + 2*(var_TR + var_error),
+      `7` = var_TC + 2*(var_TR + var_error)
     ),
     sigmaOmega_l = list(
       # For covariance rows in Table 3; these also appear inside single-modality integrals (Eq. 12)
