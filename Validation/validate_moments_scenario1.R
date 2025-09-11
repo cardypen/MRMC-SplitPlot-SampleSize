@@ -67,7 +67,7 @@ scen1_data_for_imrmc<-createIMRMCdf(scen1_data,
 
 scen1_imrmc_results<-doIMRMC(scen1_data_for_imrmc)
 
-scen1_imrmc_results$VarDecomp$BDG
+scen1_imrmc_results$varDecomp$BDG$Ustat$comp
 print(moments_df)
 
 
