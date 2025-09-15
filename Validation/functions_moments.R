@@ -397,6 +397,97 @@ compute_moments_df <- function(DeltaA, DeltaB, sigmas, AUCA, AUCB) {
 }
 
 
+
+#############################################################
+### Moments -> Var(ΔA) -> Power (Chen, Gong, Gallas 2018) ###
+#############################################################
+
+# Build c1..c4 for given N0, N1 (used in VR^Δ and VC^Δ)
+.c_coeffs <- function(N0, N1) {
+  c1 <- 1/(N0*N1)
+  c2 <- (N0 - 1)/(N0*N1)
+  c3 <- (N1 - 1)/(N0*N1)
+  c4 <- (N0 - 1)*(N1 - 1)/(N0*N1)
+  list(c1=c1, c2=c2, c3=c3, c4=c4)
+}
+
+# Given MA, MB, MAB (each length-8), construct Δ-moments (length-8)
+delta_moments <- function(MA, MB, MAB) {
+  # Mk^Δ = Mk^(1) + Mk^(2) - 2 Mk^(1×2)
+  MA + MB - 2*MAB
+}
+
+# Decompose Var(ΔA) into VR^Δ and VC^Δ using Mk^Δ and c1..c4
+VR_VC_delta <- function(MD, N0, N1) {
+  stopifnot(length(MD) == 8)
+  cc <- .c_coeffs(N0, N1)
+  with(cc, {
+    VRd <- c1*(MD[1]-MD[5]) + c2*(MD[2]-MD[6]) + c3*(MD[3]-MD[7]) + c4*(MD[4]-MD[8])
+    VCd <- c1*MD[5] + c2*MD[6] + c3*MD[7] - (1 - c4)*MD[8]
+    list(VR_delta = VRd, VC_delta = VCd)
+  })
+}
+
+# Var(ΔA) for different designs
+# - FC: Var = (1/NR)*VR^Δ + VC^Δ
+# - PSP with equal reader-group sizes (G groups): Var = (1/NR)*VR^Δ + (1/G)*VC^Δ
+# - PSP with unequal group sizes: Var = (1/NR)*VR^Δ + (sum NR_g^2 / NR^2) * VC^Δ
+var_deltaA <- function(MA, MB, MAB, N0, N1, NR,
+                       design = c("FC","PSP_equal","PSP_unequal"),
+                       G = NULL, NR_groups = NULL) {
+  design <- match.arg(design)
+  MD <- delta_moments(MA, MB, MAB)
+  parts <- VR_VC_delta(MD, N0, N1)
+  VRd <- parts$VR_delta
+  VCd <- parts$VC_delta
+  
+  if (design == "FC") {
+    return( (1/NR)*VRd + VCd )
+  }
+  if (design == "PSP_equal") {
+    if (is.null(G)) stop("Provide G (number of reader groups) for PSP_equal.")
+    return( (1/NR)*VRd + (1/G)*VCd )
+  }
+  # PSP_unequal
+  if (is.null(NR_groups)) stop("Provide NR_groups (vector of reader counts per group) for PSP_unequal.")
+  w <- sum(NR_groups^2) / (sum(NR_groups)^2)
+  (1/NR)*VRd + w*VCd
+}
+
+# Power calculators
+# Two-sided superiority: α (default 0.05)
+power_two_sided <- function(deltaA, var_deltaA, alpha = 0.05) {
+  zcrit <- qnorm(1 - alpha/2)
+  sdD <- sqrt(var_deltaA)
+  pnorm(deltaA/sdD - zcrit) + pnorm(-deltaA/sdD - zcrit)
+}
+
+# One-sided non-inferiority:
+# H0: A2 - A1 <= -δ  vs  H1: A2 - A1 > -δ
+# Using Chen+2018 convention: Power = Φ( (ΔA + δ)/sd - z_{α/2} )
+# (You can change to z_{α} if you prefer one-sided critical value.)
+power_noninferiority <- function(deltaA, var_deltaA, delta_margin, alpha = 0.05, use_two_sided_z = TRUE) {
+  zcrit <- if (use_two_sided_z) qnorm(1 - alpha/2) else qnorm(1 - alpha)
+  sdD <- sqrt(var_deltaA)
+  pnorm( (deltaA + delta_margin)/sdD - zcrit )
+}
+
+
+
+
+
+
+
+
+
+
+
+
+###########################
+### Simulation Function ###
+###########################
+
+
 #simulates one split-plot MRMC data set
 # default variance components from table 4 (from those originally chosen by Roe and Metz)
 sim_one_splitplot_cardy <- function( mu_nondisease = 0, 
@@ -596,3 +687,4 @@ sim_splitplot_cardy<- function(n=10,
   
   return(sim_data)
 }
+
