@@ -1,0 +1,187 @@
+---
+title: "Validation"
+format:   
+  html:
+    self-contained: true
+    toc: true
+    number-depth: 3
+editor: visual
+execute-dir: project
+execute:
+  echo: false
+  warning: false
+---
+
+## Validation Methods (In Progess)
+
+The goal is to show that the method used to power studies in the MRMC Sample Size app aligns with published research.
+
+### Inputs
+
+The app takes in parameters in Obuchowski-Rockette (OR) form. This form is the most clinically relevant. These parameters are converted to Roe-Metz-Hillis (RMH) parameters.
+
+## Results directly from RMH Parameters from Chen, Gong, Gallas 2018:
+
+```{r}
+source("functions_moments.R")
+
+library(purrr)
+library(gt)
+library(tidyr)
+```
+
+```{r}
+
+# Chen, Gong, Gallas Table 1 scenarios
+scenarios <- list(
+  # HH
+  list(structure="HH", AUC1=0.65, AUC2=0.70, sigma_r=0.011, sigma_tr=0.011,
+       sigma_C=0.3, sigma_TC=0.3, sigma_RC=0.2, sigma_trc=0.2),
+  list(structure="HH", AUC1=0.80, AUC2=0.85, sigma_r=0.030, sigma_tr=0.030,
+       sigma_C=0.3, sigma_TC=0.3, sigma_RC=0.2, sigma_trc=0.2),
+  list(structure="HH", AUC1=0.90, AUC2=0.95, sigma_r=0.056, sigma_tr=0.056,
+       sigma_C=0.3, sigma_TC=0.3, sigma_RC=0.2, sigma_trc=0.2),
+  # HL
+  list(structure="HL", AUC1=0.65, AUC2=0.70, sigma_r=0.0055, sigma_tr=0.0055,
+       sigma_C=0.3, sigma_TC=0.3, sigma_RC=0.2, sigma_trc=0.2),
+  list(structure="HL", AUC1=0.80, AUC2=0.85, sigma_r=0.0055, sigma_tr=0.0055,
+       sigma_C=0.3, sigma_TC=0.3, sigma_RC=0.2, sigma_trc=0.2),
+  list(structure="HL", AUC1=0.90, AUC2=0.95, sigma_r=0.0055, sigma_tr=0.0055,
+       sigma_C=0.3, sigma_TC=0.3, sigma_RC=0.2, sigma_trc=0.2),
+  # LH
+  list(structure="LH", AUC1=0.65, AUC2=0.70, sigma_r=0.011, sigma_tr=0.011,
+       sigma_C=0.1, sigma_TC=0.1, sigma_RC=0.2, sigma_trc=0.6),
+  list(structure="LH", AUC1=0.80, AUC2=0.85, sigma_r=0.030, sigma_tr=0.030,
+       sigma_C=0.1, sigma_TC=0.1, sigma_RC=0.2, sigma_trc=0.6),
+  list(structure="LH", AUC1=0.90, AUC2=0.95, sigma_r=0.056, sigma_tr=0.056,
+       sigma_C=0.1, sigma_TC=0.1, sigma_RC=0.2, sigma_trc=0.6),
+  # LL
+  list(structure="LL", AUC1=0.65, AUC2=0.70, sigma_r=0.0055, sigma_tr=0.0055,
+       sigma_C=0.1, sigma_TC=0.1, sigma_RC=0.2, sigma_trc=0.6),
+  list(structure="LL", AUC1=0.80, AUC2=0.85, sigma_r=0.0055, sigma_tr=0.0055,
+       sigma_C=0.1, sigma_TC=0.1, sigma_RC=0.2, sigma_trc=0.6),
+  list(structure="LL", AUC1=0.90, AUC2=0.95, sigma_r=0.0055, sigma_tr=0.0055,
+       sigma_C=0.1, sigma_TC=0.1, sigma_RC=0.2, sigma_trc=0.6)
+)
+
+# ---- run all scenarios ----
+results <- map_df(scenarios, evaluate_power_all, N0=80, N1=60, NR=16)
+
+# Prepare data: separate variance and power columns for each design
+results_wide <- results %>%
+  mutate(var_x1e3 = 1000 * var_delta,
+         power_pct = 100 * power) %>%
+  select(structure, AUC1, AUC2, design, var_x1e3, power_pct) %>%
+  pivot_wider(
+    names_from = design,
+    values_from = c(var_x1e3, power_pct)
+  )
+
+# Build gt table with top-level spanners
+results_gt <- results_wide %>%
+  gt(rowname_col = "structure") %>%
+  tab_spanner(
+    label = "Variance (×1000)",
+    columns = starts_with("var_x1e3")
+  ) %>%
+  tab_spanner(
+    label = "Power (%)",
+    columns = starts_with("power_pct")
+  ) %>%
+  cols_label(
+    var_x1e3_FC = "FC", var_x1e3_PSP2 = "PSP2",
+    var_x1e3_PSP4 = "PSP4", var_x1e3_PSP8 = "PSP8",
+    power_pct_FC = "FC", power_pct_PSP2 = "PSP2",
+    power_pct_PSP4 = "PSP4", power_pct_PSP8 = "PSP8"
+  ) %>%
+  fmt_number(
+    columns = starts_with("var_x1e3"),
+    decimals = 2
+  ) %>%
+  fmt_number(
+    columns = starts_with("power_pct"),
+    decimals = 1
+  )
+
+results_gt
+
+```
+
+## Results from OR Parameters with conversion:
+
+```{r}
+### convert original RMH parameters to OR parameters to match how it will be used in practice
+tab1_OR_params <- list()
+for (i in seq_along(scenarios)) {
+  scen <- scenarios[[i]]
+  OR_params <- convert_to_OR(AUC1 = scen$AUC1, AUC2 = scen$AUC2, 
+                             var_R = scen$sigma_r,
+                             var_TR = scen$sigma_tr, var_C = scen$sigma_C,
+                             var_TC = scen$sigma_TC, var_RC = scen$sigma_RC,
+                             var_error = scen$sigma_trc, n0 = 80, n1 = 60)
+  tab1_OR_params[[i]] <- OR_params
+}
+
+converted_RMH_params<- map_df(tab1_OR_params, OR_to_RMH)
+
+
+# ---- run all scenarios ----
+struct<-c(rep("HH", 3), rep("HL", 3), rep("LH", 3), rep("LL", 3))
+
+converted_RMH_params2<-converted_RMH_params %>% select(n0, n1, delta1, delta2, 
+                                                       var_R, var_TR, var_C,
+                                                       var_TC, var_RC, var_error) %>%
+  mutate(structure = struct)
+
+
+df_list <- split(converted_RMH_params2, seq(nrow(converted_RMH_params2)))
+df_list <- lapply(df_list, as.list)
+
+results2 <- map_df(df_list, evaluate_power_new, NR=16)
+
+# Prepare data: separate variance and power columns for each design
+results_wide2 <- results2 %>%
+  mutate(var_x1e3 = 1000 * var_delta,
+         power_pct = 100 * power) %>%
+  select(structure, AUC1, AUC2, design, var_x1e3, power_pct) %>%
+  pivot_wider(
+    names_from = design,
+    values_from = c(var_x1e3, power_pct)
+  )
+
+# Build gt table with top-level spanners
+results_gt2 <- results_wide2 %>%
+  gt(rowname_col = "structure") %>%
+  tab_spanner(
+    label = "Variance (×1000)",
+    columns = starts_with("var_x1e3")
+  ) %>%
+  tab_spanner(
+    label = "Power (%)",
+    columns = starts_with("power_pct")
+  ) %>%
+  cols_label(
+    var_x1e3_FC = "FC", var_x1e3_PSP2 = "PSP2",
+    var_x1e3_PSP4 = "PSP4", var_x1e3_PSP8 = "PSP8",
+    power_pct_FC = "FC", power_pct_PSP2 = "PSP2",
+    power_pct_PSP4 = "PSP4", power_pct_PSP8 = "PSP8"
+  ) %>%
+  fmt_number(
+    columns = starts_with("var_x1e3"),
+    decimals = 2
+  ) %>%
+  fmt_number(
+    columns = starts_with("power_pct"),
+    decimals = 1
+  )
+
+results_gt2
+```
+
+## References (need to format consistantly)
+
+Chen, W; Gong, Q; Gallas, B. D, 'Paired split-plot designs of multireader multicase studies,' J. Med. Imag. **5**(3), 031410 (2018)
+
+Brandon D. Gallas, Stephen L. Hillis, "Generalized Roe and Metz receiver operating characteristic model: analytic link between simulated decision scores and empirical AUC variances and covariances," J. Med. Imag. 1(3) 031006 (25 September 2014)[ https://doi.org/10.1117/1.JMI.1.3.031006](https://doi.org/10.1117/1.JMI.1.3.031006)
+
+Hillis SL. Relationship between Roe and Metz simulation model for multireader diagnostic data and Obuchowski-Rockette model parameters. Stat Med. 2018 Jun 15;37(13):2067-2093. doi: 10.1002/sim.7616. Epub 2018 Apr 2. PMID: 29609206; PMCID: PMC5980727.

@@ -158,7 +158,8 @@ moment_single_l <- function(l, Delta, sigmas) {
     p <- pnorm( (Delta + x*sqrt(s_common)) / denom )
     p*p * dnorm(x)
   }
-  integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 400L, rel.tol = 1e-7)$value
+  #integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 400L, rel.tol = 1e-7)$value
+  integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 2000L, rel.tol = 1e-12, abs.tol = 1e-12)$value
 }
 
 # Cross-modality moment MAB_l for l=1..7 (Eq. 15)
@@ -178,7 +179,8 @@ moment_cross_l <- function(l, DeltaA, DeltaB, sigmas) {
     pB <- pnorm( (DeltaB + x*sqrt(s_common)) / denomB )
     pA * pB * dnorm(x)
   }
-  integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 400L, rel.tol = 1e-7)$value
+  #integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 400L, rel.tol = 1e-7)$value
+  integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 2000L, rel.tol = 1e-12, abs.tol = 1e-12)$value
 }
 
 # Build all 8 moments for a single modality (A or B)
@@ -479,6 +481,160 @@ power_noninferiority <- function(deltaA, var_deltaA, delta_margin, alpha = 0.05,
 
 
 
+# ---- helper to evaluate one scenario across designs ----
+evaluate_power_all <- function(params, N0, N1, NR, alpha = 0.05) {
+  sigmas <- build_sigma_sums(params)
+  
+  delta1 <- qnorm(params$AUC1) * sqrt(sigmas$sigma_Omega + sigmas$sigma_A)
+  delta2 <- qnorm(params$AUC2) * sqrt(sigmas$sigma_Omega + sigmas$sigma_B)
+  
+  # AUCA <- expected_auc(delta1, sigmas$sigma_Omega, sigmas$sigma_A)
+  # AUCB <- expected_auc(delta2, sigmas$sigma_Omega, sigmas$sigma_B)
+  # deltaA <- AUCB - AUCA
+  AUCA <- params$AUC1
+  AUCB <- params$AUC2
+  deltaA <- AUCB - AUCA
+  
+  moments_df <- compute_moments_df(delta1, delta2, sigmas, AUCA, AUCB)
+  
+  MA  <- as.numeric(moments_df[moments_df$modality == "A", paste0("M", 1:8)])
+  MB  <- as.numeric(moments_df[moments_df$modality == "B", paste0("M", 1:8)])
+  MAB <- as.numeric(moments_df[moments_df$modality == "Cross", paste0("M", 1:8)])
+  
+  # full variance decomposition for FC
+  v_fc <- var_deltaA(MA, MB, MAB, N0, N1, NR, design="FC")
+  
+  # Δ-moments and VR/VC decomposition
+  MD <- delta_moments(MA, MB, MAB)
+  parts <- VR_VC_delta(MD, N0, N1)
+  vR <- parts$VR_delta
+  vC <- parts$VC_delta
+  
+  # design-specific variances
+  variances <- c(
+    FC   = (1/NR) * vR + vC,         # Eq. (11)
+    PSP2 = (1/NR) * vR + (1/2) * vC, # Eq. (12) with G=2
+    PSP4 = (1/NR) * vR + (1/4) * vC, # G=4
+    PSP8 = (1/NR) * vR + (1/8) * vC  # G=8
+  )
+  
+  # compute power for each design
+  powers <- map_dbl(variances, ~ power_two_sided(deltaA, .x, alpha))
+  
+  tibble(
+    structure = params$structure,
+    AUC1 = params$AUC1,
+    AUC2 = params$AUC2,
+    delta_true = deltaA,
+    design = names(variances),
+    var_delta = variances,
+    sd_delta = sqrt(variances),
+    power = powers
+  )
+}
+
+
+
+
+evaluate_power_new <- function(params, NR, alpha = 0.05) {
+  N0<-params$n0
+  N1<-params$n1
+  
+  delta1 <- params$delta1
+  delta2 <- params$delta2
+  
+  # params_for_sigma_sums<- params %>% 
+  #   rename(sigma_r = var_R , sigma_tr = var_TR, sigma_C = var_C , sigma_TC = var_TC,
+  #          sigma_RC = var_RC, sigma_trc = var_error)
+  
+  rename_lookup <- c(
+    var_R = "sigma_r",
+    var_TR = "sigma_tr",
+    var_C = "sigma_C",
+    var_TC = "sigma_TC",
+    var_RC = "sigma_RC",
+    var_error = "sigma_trc"
+  )
+  
+  params_for_sigma_sums <- params %>%
+    set_names(rename_lookup[names(params)])
+  
+  sigmas <- build_sigma_sums(params_for_sigma_sums)
+  
+  # delta1 <- qnorm(params$AUC1) * sqrt(sigmas$sigma_Omega + sigmas$sigma_A)
+  # delta2 <- qnorm(params$AUC2) * sqrt(sigmas$sigma_Omega + sigmas$sigma_B)
+  
+  AUCA <- expected_auc(delta1, sigmas$sigma_Omega, sigmas$sigma_A)
+  AUCB <- expected_auc(delta2, sigmas$sigma_Omega, sigmas$sigma_B)
+  deltaA <- AUCB - AUCA
+  # AUCA <- params$AUC1
+  # AUCB <- params$AUC2
+  # deltaA <- AUCB - AUCA
+  
+  moments_df <- compute_moments_df(params$delta1, params$delta2, sigmas, AUCA, AUCB)
+  
+  MA  <- as.numeric(moments_df[moments_df$modality == "A", paste0("M", 1:8)])
+  MB  <- as.numeric(moments_df[moments_df$modality == "B", paste0("M", 1:8)])
+  MAB <- as.numeric(moments_df[moments_df$modality == "Cross", paste0("M", 1:8)])
+  
+  # full variance decomposition for FC
+  v_fc <- var_deltaA(MA, MB, MAB, N0, N1, NR, design="FC")
+  
+  # Δ-moments and VR/VC decomposition
+  MD <- delta_moments(MA, MB, MAB)
+  parts <- VR_VC_delta(MD, N0, N1)
+  vR <- parts$VR_delta
+  vC <- parts$VC_delta
+  
+  # design-specific variances
+  variances <- c(
+    FC   = (1/NR) * vR + vC,         # Eq. (11)
+    PSP2 = (1/NR) * vR + (1/2) * vC, # Eq. (12) with G=2
+    PSP4 = (1/NR) * vR + (1/4) * vC, # G=4
+    PSP8 = (1/NR) * vR + (1/8) * vC  # G=8
+  )
+  
+  # compute power for each design
+  powers <- map_dbl(variances, ~ power_two_sided(deltaA, .x, alpha))
+  
+  tibble(
+    structure = params$structure,
+    AUC1 = AUCA,
+    AUC2 = AUCB,
+    delta_true = deltaA,
+    design = names(variances),
+    var_delta = variances,
+    sd_delta = sqrt(variances),
+    power = powers
+  )
+}
+
+
+
+###### convert to OR ######
+
+convert_to_OR <- function(AUC1, AUC2, var_R, var_TR, var_C, var_TC, var_RC, var_error, n0=100, n1=100) {
+  sigma_Omega <- 2*(var_R + var_C + var_RC)
+  sigma_mod   <- 2*(var_TR + var_TC + var_error)
+  
+  delta1 <- qnorm(AUC1) * sqrt(sigma_Omega + sigma_mod)
+  delta2 <- qnorm(AUC2) * sqrt(sigma_Omega + sigma_mod)
+  
+  or_params<- RMH_to_OR(
+    n0 = n0,
+    n1 = n1,
+    b = 1, # this is true under the diseased/nondiseased equal variance assumption
+    delta1 = delta1,
+    delta2 = delta2,
+    var_R = var_R,
+    var_TR = var_TR,
+    var_C = var_C,
+    var_TC = var_TC,
+    var_RC = var_RC,
+    var_error = var_error)
+  
+  or_params
+}
 
 
 
