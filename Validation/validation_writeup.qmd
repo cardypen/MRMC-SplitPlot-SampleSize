@@ -27,7 +27,7 @@ source("functions_moments.R")
 
 library(purrr)
 library(gt)
-library(tidyr)
+library(tidyverse)
 ```
 
 ```{r}
@@ -182,6 +182,6 @@ results_gt2
 
 Chen, W; Gong, Q; Gallas, B. D, 'Paired split-plot designs of multireader multicase studies,' J. Med. Imag. **5**(3), 031410 (2018)
 
-Brandon D. Gallas, Stephen L. Hillis, "Generalized Roe and Metz receiver operating characteristic model: analytic link between simulated decision scores and empirical AUC variances and covariances," J. Med. Imag. 1(3) 031006 (25 September 2014)[ https://doi.org/10.1117/1.JMI.1.3.031006](https://doi.org/10.1117/1.JMI.1.3.031006)
+Brandon D. Gallas, Stephen L. Hillis, "Generalized Roe and Metz receiver operating characteristic model: analytic link between simulated decision scores and empirical AUC variances and covariances," J. Med. Imag. 1(3) 031006 (25 September 2014)<https://doi.org/10.1117/1.JMI.1.3.031006>
 
 Hillis SL. Relationship between Roe and Metz simulation model for multireader diagnostic data and Obuchowski-Rockette model parameters. Stat Med. 2018 Jun 15;37(13):2067-2093. doi: 10.1002/sim.7616. Epub 2018 Apr 2. PMID: 29609206; PMCID: PMC5980727.

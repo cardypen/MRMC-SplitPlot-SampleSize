@@ -144,44 +144,116 @@ expected_auc <- function(Delta, sigma_Omega, sigma_mod) {
   pnorm( Delta / sqrt(sigma_Omega + sigma_mod) )
 }
 
-# Single-modality moment M_l for l=2..7 (Eq. 12)
-moment_single_l <- function(l, Delta, sigmas) {
-  sOm   <- sigmas$sigma_Omega
-  sMod  <- sigmas$sigma_A   # same form if called for B in this equal-variance case
-  sOm_l <- sigmas$sigmaOmega_l[[as.character(l)]]
-  sMod_l<- sigmas$sigmaA_l[[as.character(l)]]
-  
-  s_common <- sOm + sMod - sOm_l - sMod_l
-  denom   <- sqrt(sOm_l + sMod_l)
-  
-  integrand <- function(x) {
-    p <- pnorm( (Delta + x*sqrt(s_common)) / denom )
-    p*p * dnorm(x)
-  }
-  #integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 400L, rel.tol = 1e-7)$value
-  integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 2000L, rel.tol = 1e-12, abs.tol = 1e-12)$value
+
+
+# ####### original
+# # Single-modality moment M_l for l=2..7 (Eq. 12)
+# moment_single_l <- function(l, Delta, sigmas) {
+#   sOm   <- sigmas$sigma_Omega
+#   sMod  <- sigmas$sigma_A   # same form if called for B in this equal-variance case
+#   sOm_l <- sigmas$sigmaOmega_l[[as.character(l)]]
+#   sMod_l<- sigmas$sigmaA_l[[as.character(l)]]
+# 
+#   s_common <- sOm + sMod - sOm_l - sMod_l
+#   denom   <- sqrt(sOm_l + sMod_l)
+# 
+#   integrand <- function(x) {
+#     p <- pnorm( (Delta + x*sqrt(s_common)) / denom )
+#     p*p * dnorm(x)
+#   }
+#   #integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 400L, rel.tol = 1e-7)$value
+#   integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 2000L, rel.tol = 1e-12, abs.tol = 1e-12)$value
+# }
+# ### try "In our software, we simply sample the 1-D integral at 256 points on the interval (−10;10) and use the midpoint rule (rectangle rule)."
+# ### Appendix A Gallas, Hillis under eq 24
+# 
+# 
+# 
+# 
+# # Cross-modality moment MAB_l for l=1..7 (Eq. 15)
+# moment_cross_l <- function(l, DeltaA, DeltaB, sigmas) {
+#   sOm   <- sigmas$sigma_Omega
+#   sOm_l <- sigmas$sigmaOmega_l[[as.character(l)]]
+#   # In equal-variance case σA=σB
+#   sA <- sigmas$sigma_A
+#   sB <- sigmas$sigma_B
+# 
+#   s_common <- sOm - sOm_l
+#   denomA   <- sqrt(sA + sOm_l)
+#   denomB   <- sqrt(sB + sOm_l)
+# 
+#   integrand <- function(x) {
+#     pA <- pnorm( (DeltaA + x*sqrt(s_common)) / denomA )
+#     pB <- pnorm( (DeltaB + x*sqrt(s_common)) / denomB )
+#     pA * pB * dnorm(x)
+#   }
+#   #integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 400L, rel.tol = 1e-7)$value
+#   integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 2000L, rel.tol = 1e-12, abs.tol = 1e-12)$value
+# }
+
+
+
+
+
+
+
+
+# ### try "In our software, we simply sample the 1-D integral at 256 points on the interval (−10;10) and use the midpoint rule (rectangle rule)."
+# ### Appendix A Gallas, Hillis under eq 24
+
+midpoint_integral <- function(f, a = -10, b = 10, n = 256) {
+  h <- (b - a) / n
+  midpoints <- seq(a + h/2, b - h/2, length.out = n)
+  h * sum(f(midpoints))
 }
 
-# Cross-modality moment MAB_l for l=1..7 (Eq. 15)
-moment_cross_l <- function(l, DeltaA, DeltaB, sigmas) {
+
+moment_single_l <- function(l, Delta, sigmas, n_points = 256) {
+  sOm   <- sigmas$sigma_Omega
+  sMod  <- sigmas$sigma_A
+  sOm_l <- sigmas$sigmaOmega_l[[as.character(l)]]
+  sMod_l<- sigmas$sigmaA_l[[as.character(l)]]
+
+  s_common <- sOm + sMod - sOm_l - sMod_l
+  denom   <- sqrt(sOm_l + sMod_l)
+
+  f <- function(x) {
+    p <- pnorm((Delta + x * sqrt(s_common)) / denom)
+    p * p * dnorm(x)
+  }
+
+  midpoint_integral(f, a = -10, b = 10, n = n_points)
+}
+#
+#
+moment_cross_l <- function(l, DeltaA, DeltaB, sigmas, n_points = 256) {
   sOm   <- sigmas$sigma_Omega
   sOm_l <- sigmas$sigmaOmega_l[[as.character(l)]]
-  # In equal-variance case σA=σB
   sA <- sigmas$sigma_A
   sB <- sigmas$sigma_B
-  
+
   s_common <- sOm - sOm_l
   denomA   <- sqrt(sA + sOm_l)
   denomB   <- sqrt(sB + sOm_l)
-  
-  integrand <- function(x) {
-    pA <- pnorm( (DeltaA + x*sqrt(s_common)) / denomA )
-    pB <- pnorm( (DeltaB + x*sqrt(s_common)) / denomB )
+
+  f <- function(x) {
+    pA <- pnorm((DeltaA + x * sqrt(s_common)) / denomA)
+    pB <- pnorm((DeltaB + x * sqrt(s_common)) / denomB)
     pA * pB * dnorm(x)
   }
-  #integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 400L, rel.tol = 1e-7)$value
-  integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 2000L, rel.tol = 1e-12, abs.tol = 1e-12)$value
+
+  midpoint_integral(f, a = -10, b = 10, n = n_points)
 }
+
+
+
+
+
+
+
+
+
+
 
 # Build all 8 moments for a single modality (A or B)
 moments_single <- function(Delta, sigmas, AUC) {
@@ -459,7 +531,7 @@ var_deltaA <- function(MA, MB, MAB, N0, N1, NR,
 # Power calculators
 # Two-sided superiority: α (default 0.05)
 power_two_sided <- function(deltaA, var_deltaA, alpha = 0.05) {
-  zcrit <- qnorm(1 - alpha/2)
+  zcrit <- round(qnorm(1 - alpha/2), 2)
   sdD <- sqrt(var_deltaA)
   pnorm(deltaA/sdD - zcrit) + pnorm(-deltaA/sdD - zcrit)
 }
@@ -532,6 +604,145 @@ evaluate_power_all <- function(params, N0, N1, NR, alpha = 0.05) {
     power = powers
   )
 }
+
+
+
+
+
+###################################################################
+### check power by plugging in variance of delta a from table 2 ###
+###################################################################
+manual_vars <- data.frame(
+  structure = c("HH","HH","HH","HL","HL","HL",
+                "LH","LH","LH","LL","LL","LL"),
+  AUC1      = c(0.65,0.80,0.90,
+                0.65,0.80,0.90,
+                0.65,0.80,0.90,
+                0.65,0.80,0.90),
+  AUC2      = c(0.70,0.85,0.95,
+                0.70,0.85,0.95,
+                0.70,0.85,0.95,
+                0.70,0.85,0.95),
+  var_FC    = c(0.00142,0.00096,0.00042,  # Table 2 values here
+                0.00134,0.00077,0.00028,
+                0.00071,0.00055,0.00027, 
+                0.00063,0.00035,0.00012),
+  var_PSP2  = c(0.00083,0.00063,0.00030,  # Table 2 values here
+                0.00075,0.00043,0.00015,
+                0.00052,0.00045,0.00023, 
+                0.00044,0.00025,0.000083),
+  var_PSP4  = c(0.00053,0.00046,0.00024,  # Table 2 values here
+                0.00045,0.00026,0.00009,
+                0.00043,0.00040,0.00022, 
+                0.00034,0.00020,0.000067),
+  var_PSP8  = c(0.00038,0.00038,0.00021,  # Table 2 values here
+                0.00030,0.00017,0.00006,
+                0.00038,0.00038,0.00021, 
+                0.00030,0.00017,0.000059)
+)
+
+
+manual_long <- manual_vars %>%
+  tidyr::pivot_longer(cols = starts_with("var_"),
+                      names_to = "design",
+                      values_to = "var_delta") %>%
+  dplyr::mutate(design = sub("var_", "", design),
+                delta_true = AUC2 - AUC1,
+                sd_delta = sqrt(var_delta),
+                power = power_two_sided(delta_true, var_delta, alpha = 0.05))
+
+
+manual_table2 <- manual_long %>%
+  mutate(var_x1e3 = 1000 * var_delta,
+         power_pct = 100 * power_two_sided(AUC2 - AUC1, var_delta)) %>%
+  select(structure, AUC1, AUC2, design, var_x1e3, power_pct) %>%
+  pivot_wider(names_from = design, 
+              values_from = c(var_x1e3, power_pct))
+
+power_from_manual_var<-manual_table2 %>%
+  gt(rowname_col = "structure") %>%
+  tab_spanner(label = "Variance (×1000)",
+              columns = starts_with("var_x1e3")) %>%
+  tab_spanner(label = "Power (%)",
+              columns = starts_with("power_pct")) %>%
+  cols_label(
+    var_x1e3_FC   = "FC", var_x1e3_PSP2 = "PSP2",
+    var_x1e3_PSP4 = "PSP4", var_x1e3_PSP8 = "PSP8",
+    power_pct_FC   = "FC", power_pct_PSP2 = "PSP2",
+    power_pct_PSP4 = "PSP4", power_pct_PSP8 = "PSP8"
+  ) %>%
+  fmt_number(columns = starts_with("var_x1e3"), decimals = 3) %>%
+  fmt_number(columns = starts_with("power_pct"), decimals = 3)
+
+
+
+power_two_sided_check <- function(deltaA, var_deltaA, alpha = 0.05) {
+  zcrit <- qnorm(1 - alpha/2)
+  sdD <- sqrt(var_deltaA)
+  pnorm(deltaA/sdD - zcrit) + pnorm(-deltaA/sdD - zcrit)
+}
+
+evaluate_power_check <- function(params, N0, N1, NR, alpha = 0.05) {
+  sigmas <- build_sigma_sums(params)
+  
+  delta1 <- qnorm(params$AUC1) * sqrt(sigmas$sigma_Omega + sigmas$sigma_A)
+  delta2 <- qnorm(params$AUC2) * sqrt(sigmas$sigma_Omega + sigmas$sigma_B)
+  
+  # AUCA <- expected_auc(delta1, sigmas$sigma_Omega, sigmas$sigma_A)
+  # AUCB <- expected_auc(delta2, sigmas$sigma_Omega, sigmas$sigma_B)
+  # deltaA <- AUCB - AUCA
+  AUCA <- params$AUC1
+  AUCB <- params$AUC2
+  deltaA <- AUCB - AUCA
+  
+  moments_df <- compute_moments_df(delta1, delta2, sigmas, AUCA, AUCB)
+  
+  MA  <- as.numeric(moments_df[moments_df$modality == "A", paste0("M", 1:8)])
+  MB  <- as.numeric(moments_df[moments_df$modality == "B", paste0("M", 1:8)])
+  MAB <- as.numeric(moments_df[moments_df$modality == "Cross", paste0("M", 1:8)])
+  
+  # full variance decomposition for FC
+  v_fc <- var_deltaA(MA, MB, MAB, N0, N1, NR, design="FC")
+  
+  # Δ-moments and VR/VC decomposition
+  MD <- delta_moments(MA, MB, MAB)
+  parts <- VR_VC_delta(MD, N0, N1)
+  vR <- parts$VR_delta
+  vC <- parts$VC_delta
+  
+  # design-specific variances
+  # variances <- c(
+  #   FC   = (1/NR) * vR + vC,         # Eq. (11)
+  #   PSP2 = (1/NR) * vR + (1/2) * vC, # Eq. (12) with G=2
+  #   PSP4 = (1/NR) * vR + (1/4) * vC, # G=4
+  #   PSP8 = (1/NR) * vR + (1/8) * vC  # G=8
+  # )
+  
+  variances_check<- c(FC = 1.42, PSP2 = )
+  
+  # compute power for each design
+  powers <- map_dbl(variances, ~ power_two_sided(deltaA, .x, alpha))
+  
+  tibble(
+    structure = params$structure,
+    AUC1 = params$AUC1,
+    AUC2 = params$AUC2,
+    delta_true = deltaA,
+    design = names(variances),
+    var_delta = variances,
+    sd_delta = sqrt(variances),
+    power = powers
+  )
+}
+
+
+
+
+
+
+
+
+
 
 
 
@@ -843,4 +1054,14 @@ sim_splitplot_cardy<- function(n=10,
   
   return(sim_data)
 }
+
+
+
+
+
+
+
+
+
+
 
