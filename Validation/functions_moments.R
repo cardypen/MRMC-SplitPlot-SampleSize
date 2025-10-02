@@ -4,6 +4,8 @@
 library(iMRMC)
 library(dplyr)
 library(MRMCaov)
+library(tidyverse)
+library(gt)
 
 # Specify OR parameters
 
@@ -277,177 +279,9 @@ moments_cross <- function(DeltaA, DeltaB, sigmas, AUCA, AUCB) {
 
 
 
-
-#####################
-### simulate data ###
-#####################
-
-#simulates one split-plot MRMC data set
-# default variance components from table 4 (from those originally chosen by Roe and Metz)
-sim_one_splitplot_cardy <- function( mu_nondisease = 0, 
-                                     mu_disease = 1.53, 
-                                     hypothesis = "alt",
-                                     tau = 0.25,
-                                     sigma_r = 0.011, sigma_c = 0.1,
-                                     sigma_rc = 0.2, sigma_tr = 0.03,
-                                     sigma_tc = 0.1, sigma_trc = 0.2, 
-                                     block_ss = 60,
-                                     readers_per_block = 3,
-                                     blocks = 2,
-                                     modalities = 2) {
-  
-  total_ss<-block_ss*blocks
-  readers<-readers_per_block*blocks
-  
-  # set tau based null vs. alternative hypothesis selection
-  if (hypothesis == "alt") {
-    tau_nondisease_m1<- 0
-    tau_nondisease_m2<- 0
-    tau_disease_m1<- 0
-    tau_disease_m2<- tau
-  } else {
-    tau_nondisease_m1<- 0
-    tau_disease_m1<- 0
-    tau_nondisease_m2<- 0
-    tau_disease_m2<- 0
-  }
-  
-  
-  #simulate each random effects term in the model (equation A2)
-  #random-reader effect
-  R<-rnorm(readers, 0, sqrt(sigma_r))
-  
-  #random-case effect
-  C<- rnorm(total_ss, 0, sqrt(sigma_c))
-  
-  #random modality-reader effect
-  TR<- rnorm(readers*modalities, 0, sqrt(sigma_tr))
-  
-  #random modality-case effect
-  TC<- rnorm(total_ss*modalities, 0, sqrt(sigma_tc))
-  
-  #random reader-case effect
-  RC<- rnorm(readers*total_ss, 0, sqrt(sigma_rc))
-  
-  #random effect due to pure error (also includes 3 way interaction per this paper https://pmc.ncbi.nlm.nih.gov/articles/PMC9497942/)
-  TRC<- rnorm(readers*total_ss*modalities, 0, sqrt(sigma_trc))
-  
-  
-  # # even diseased/non-diseased split
-  # disease_cases <- total_ss / 2  
-  # nondisease_cases <- total_ss / 2 
-  # 
-  # # cases per block (rounded up to ensure every case is assigned a truth state)
-  # #block_ss <- ceiling(total_ss / blocks)
-  # 
-  # base_disease_per_block <- floor(disease_cases / blocks)
-  # base_nondisease_per_block <- floor(nondisease_cases / blocks)
-  # 
-  # extra_disease_cases <- disease_cases %% blocks
-  # extra_nondisease_cases <- nondisease_cases %% blocks
-  # 
-  # disease_distribution <- rep(base_disease_per_block, blocks)
-  # nondisease_distribution <- rep(base_nondisease_per_block, blocks)
-  # 
-  # disease_distribution[sample(1:blocks, extra_disease_cases)] <- disease_distribution[sample(1:blocks, extra_disease_cases)] + 1
-  # nondisease_distribution[sample(1:blocks, extra_nondisease_cases)] <- nondisease_distribution[sample(1:blocks, extra_nondisease_cases)] + 1
-  # 
-  # # truth assignments by block
-  # truth_blocks <- unlist(lapply(1:blocks, function(b) {
-  #   c(rep("disease", modalities * disease_distribution[b]),
-  #     rep("nondisease", modalities * nondisease_distribution[b]))
-  # }))
-  # 
-  # 
-  # truth <- rep(truth_blocks, times = readers)
-  
-  # target number of disease/nondisease cases overall
-  disease_total <- total_ss / 2
-  nondisease_total <- total_ss / 2
-  
-  # start with floor(block_ss / 2) disease per block
-  disease_per_block <- rep(floor(block_ss / 2), blocks)
-  nondisease_per_block <- rep(block_ss, blocks) - disease_per_block
-  
-  # adjust to ensure total matches disease_total
-  disease_adjustment <- disease_total - sum(disease_per_block)
-  
-  if (disease_adjustment != 0) {
-    adjust_blocks <- sample(1:blocks, abs(disease_adjustment))
-    disease_per_block[adjust_blocks] <- disease_per_block[adjust_blocks] + sign(disease_adjustment)
-    nondisease_per_block[adjust_blocks] <- nondisease_per_block[adjust_blocks] - sign(disease_adjustment)
-  }
-  
-  # create truth values for each block, expanding by modalities
-  truth_blocks <- unlist(lapply(1:blocks, function(b) {
-    c(rep("disease", modalities * disease_per_block[b]),
-      rep("nondisease", modalities * nondisease_per_block[b]))
-  }))
-  
-  # expand to full reader-modality-case structure
-  truth <- rep(truth_blocks, times = readers)
-  
-  
-  reader <- rep(1:readers, each = total_ss * modalities)
-  modality <- rep(c(1, 2), times = total_ss * readers)
-  case <- rep(rep(1:total_ss, each = modalities), times = readers)
-  
-  reader_block <- rep(rep(1:blocks, each = readers_per_block), each = block_ss * modalities)
-  case_block <- rep(rep(1:blocks, each = block_ss * modalities), times = readers)
-  
-  
-  
-  #remove data to make split plot
-  # print(paste("length reader:",length(reader)))
-  # print(paste("length case:",length(case)))
-  # print(paste("length truth:",length(truth)))
-  # print(paste("length modality:",length(modality)))
-  # print(paste("length case_block:",length(case_block)))
-  # print(paste("length reader_block:",length(reader_block)))
-  
-  id_df <- data.frame(reader, case, truth, modality, case_block, reader_block)
-  
-  id_df <- id_df %>%
-    mutate(truth_binary = ifelse(truth == "disease", 1, 0)) %>%
-    filter(case_block == reader_block)
-  
-  id_df <- id_df %>%
-    mutate(block = case_block) %>%
-    select(-reader_block, -case_block)
-  
-  
-  
-  
-  #generate scores
-  dat<- id_df %>%
-    mutate(mu = ifelse(truth == "disease", mu_disease, mu_nondisease),
-           tau = case_when(truth == "disease" & modality == 1 ~ tau_disease_m1,
-                           truth == "disease" & modality == 2 ~ tau_disease_m2,
-                           truth == "nondisease" & modality == 1 ~ tau_nondisease_m1,
-                           truth == "nondisease" & modality == 2 ~ tau_nondisease_m2),
-           R = R[reader],
-           C = C[case],
-           TR = TR[reader + (modality-1)*readers],
-           TC = TC[case+(modality-1)*(total_ss)],
-           RC = RC[case + (reader-1)*total_ss],
-           TRC = TRC[case + (modality-1)*total_ss + (reader-1)*total_ss*modalities],
-           score = mu + tau + R + C + TR + TC + RC + TRC)
-  
-  
-  dat_clean<-dat %>% 
-    select(reader, case, modality, truth_binary, score, block) %>%
-    mutate(reader = as.factor(paste0("reader", reader)),
-           case = as.factor(paste0("case", case)),
-           modality = as.factor(ifelse(modality == 1, "TestA", "TestB")),
-           block = as.factor(paste0("block", block)))
-  
-  
-  return(dat_clean)
-}
-
-########################################
+#########################################
 ### Return all 8 moments as dataframe ###
-########################################
+#########################################
 
 compute_moments_df <- function(DeltaA, DeltaB, sigmas, AUCA, AUCB) {
   # build vectors
@@ -745,7 +579,7 @@ evaluate_power_check <- function(params, N0, N1, NR, alpha = 0.05) {
 
 
 
-
+### power function that takes in OR parameters
 
 evaluate_power_new <- function(params, NR, alpha = 0.05) {
   N0<-params$n0
@@ -753,10 +587,6 @@ evaluate_power_new <- function(params, NR, alpha = 0.05) {
   
   delta1 <- params$delta1
   delta2 <- params$delta2
-  
-  # params_for_sigma_sums<- params %>% 
-  #   rename(sigma_r = var_R , sigma_tr = var_TR, sigma_C = var_C , sigma_TC = var_TC,
-  #          sigma_RC = var_RC, sigma_trc = var_error)
   
   rename_lookup <- c(
     var_R = "sigma_r",
@@ -850,212 +680,226 @@ convert_to_OR <- function(AUC1, AUC2, var_R, var_TR, var_C, var_TC, var_RC, var_
 
 
 
-###########################
-### Simulation Function ###
-###########################
+#############################################
+### functions for sample size calculation ###
+#############################################
 
 
-#simulates one split-plot MRMC data set
-# default variance components from table 4 (from those originally chosen by Roe and Metz)
-sim_one_splitplot_cardy <- function( mu_nondisease = 0, 
-                                     mu_disease = 1.53, 
-                                     hypothesis = "alt",
-                                     tau = 0.25,
-                                     sigma_r = 0.011, sigma_c = 0.1,
-                                     sigma_rc = 0.2, sigma_tr = 0.03,
-                                     sigma_tc = 0.1, sigma_trc = 0.2, 
-                                     block_ss = 60,
-                                     readers_per_block = 3,
-                                     blocks = 2,
-                                     modalities = 2) {
+# ---- Build S_k and constant term for analytic Var(ΔA) ----
+# weight_w: design weight on V_C^Δ
+#   FC:        w = 1
+#   PSP_equal: w = 1/G
+#   PSP_unequal: w = sum(NR_g^2)/(NR^2)  (pass this as weight_w)
+build_var_coeffs <- function(MA, MB, MAB, NR, weight_w) {
+  # Δ-moments:
+  MD <- delta_moments(MA, MB, MAB)  # length-8
   
-  total_ss<-block_ss*blocks
-  readers<-readers_per_block*blocks
+  # Coeffs for VR^Δ and VC^Δ per c1..c4:
+  # VR^Δ = c1*(MD1-MD5) + c2*(MD2-MD6) + c3*(MD3-MD7) + c4*(MD4-MD8)
+  T_R <- c(MD[1]-MD[5], MD[2]-MD[6], MD[3]-MD[7], MD[4]-MD[8])
   
-  # set tau based null vs. alternative hypothesis selection
-  if (hypothesis == "alt") {
-    tau_nondisease_m1<- 0
-    tau_nondisease_m2<- 0
-    tau_disease_m1<- 0
-    tau_disease_m2<- tau
-  } else {
-    tau_nondisease_m1<- 0
-    tau_disease_m1<- 0
-    tau_nondisease_m2<- 0
-    tau_disease_m2<- 0
+  # VC^Δ = c1*MD5 + c2*MD6 + c3*MD7 - (1 - c4)*MD8
+  #      = -MD8 + (c1*MD5 + c2*MD6 + c3*MD7 + c4*MD8)
+  T_C <- c(MD[5], MD[6], MD[7], MD[8])  # the part multiplied by c's
+  const_term <- weight_w * (-MD[8])     # the -MD8 part
+  
+  # Combine into S_k = (1/NR)*T_Rk + weight_w*T_Ck, for k=1..4
+  S <- (1/NR) * T_R + weight_w * T_C   # length-4: S1..S4
+  
+  # Express Var = const_term + S1*c1 + S2*c2 + S3*c3 + S4*c4
+  # with c1..c4 rewritten as:
+  # c1 = 1/(N0 N1)
+  # c2 = 1/N1 - 1/(N0 N1)
+  # c3 = 1/N0 - 1/(N0 N1)
+  # c4 = 1 - 1/N0 - 1/N1 + 1/(N0 N1)
+  
+  # Collect coefficients:
+  const      <- const_term + S[4]
+  coeff_1N0  <- S[3] - S[4]
+  coeff_1N1  <- S[2] - S[4]
+  coeff_1N0N1<- S[1] - S[2] - S[3] + S[4]
+  
+  list(const = const,
+       A = coeff_1N0,
+       B = coeff_1N1,
+       C = coeff_1N0N1)
+}
+
+# ---- Required variance threshold from (alpha, power, delta_A) ----
+required_variance <- function(deltaA, alpha = 0.05, power = 0.80) {
+  zcrit  <- qnorm(1 - alpha/2)
+  zbeta  <- qnorm(power)
+  (deltaA / (zcrit + zbeta))^2
+}
+
+# ---- Closed-form N0 (then N1=r*N0) given ratio r ----
+solve_cases_closed_form <- function(const, A, B, C, r, Vreq) {
+  # Var(N0) = const + (A + B/r)/N0 + C/(r*N0^2) <= Vreq
+  # Let x = 1/N0:   q x^2 + p x + (const - Vreq) <= 0
+  p <- A + B / r
+  q <- C / r
+  a <- q
+  b <- p
+  c <- const - Vreq
+  disc <- b*b - 4*a*c
+  
+  if (disc < 0) return(NULL) # infeasible at given r and parameters
+  
+  # For a>0 (typically), inequality holds between the two roots
+  x1 <- (-b - sqrt(disc)) / (2*a)
+  x2 <- (-b + sqrt(disc)) / (2*a)
+  xr <- max(x1, x2)          # rightmost root (largest x)
+  
+  if (!is.finite(xr) || xr <= 0) return(NULL)
+  
+  N0 <- ceiling(1 / xr)
+  if (!is.finite(N0) || N0 < 2) N0 <- 2L
+  N0
+}
+
+# ---- Public API: analytic sample size for cases ----
+# params: list with AUC1, AUC2 and sigma_* (your OR_to_RMH -> build_sigma_sums path)
+# NR: number of readers; design: "FC", "PSP_equal", or "PSP_unequal"
+# r: case ratio N1/N0; for PSP_equal set G; for PSP_unequal pass weight_w directly.
+analytic_case_ss <- function(params, NR, design = c("FC","PSP_equal","PSP_unequal"),
+                             r = 1, G = NULL, weight_w = NULL,
+                             alpha = 0.05, target_power = 0.80) {
+  design <- match.arg(design)
+  # Build sigma sums
+  sigmas <- build_sigma_sums(params)
+  
+  # Work with AUC targets directly (your code already does this consistently)
+  AUCA   <- params$AUC1
+  AUCB   <- params$AUC2
+  deltaA <- AUCB - AUCA
+  
+  # Moments
+  delta1 <- qnorm(AUCA) * sqrt(sigmas$sigma_Omega + sigmas$sigma_A)
+  delta2 <- qnorm(AUCB) * sqrt(sigmas$sigma_Omega + sigmas$sigma_B)
+  mdf    <- compute_moments_df(delta1, delta2, sigmas, AUCA, AUCB)
+  
+  MA  <- as.numeric(mdf[mdf$modality == "A",     paste0("M",1:8)])
+  MB  <- as.numeric(mdf[mdf$modality == "B",     paste0("M",1:8)])
+  MAB <- as.numeric(mdf[mdf$modality == "Cross", paste0("M",1:8)])
+  
+  # Design weight w for V_C^Δ
+  w <- switch(design,
+              FC = 1.0,
+              PSP_equal = {
+                if (is.null(G)) stop("Provide G for PSP_equal.")
+                1.0 / G
+              },
+              PSP_unequal = {
+                if (is.null(weight_w)) stop("Provide weight_w for PSP_unequal (sum NR_g^2 / NR^2).")
+                weight_w
+              })
+  
+  # Build coefficients for Var(ΔA) = const + A/N0 + B/N1 + C/(N0*N1)
+  K <- build_var_coeffs(MA, MB, MAB, NR = NR, weight_w = w)
+  
+  # Required variance for target power
+  Vreq <- required_variance(deltaA, alpha = alpha, power = target_power)
+  
+  # Closed-form solution in N0 with N1 = r*N0
+  N0 <- solve_cases_closed_form(const = K$const, A = K$A, B = K$B, C = K$C, r = r, Vreq = Vreq)
+  if (is.null(N0)) {
+    return(list(feasible = FALSE,
+                message = "No finite solution for the given (NR, r, AUCs, variances) and power. Try increasing NR, relaxing power, or changing r."))
   }
+  N1 <- ceiling(r * N0)
   
+  # Report achieved power at the rounded integers (sanity check)
+  # Build c-coeffs at these N0,N1 and compute analytic var & power
+  cc <- .c_coeffs(N0, N1) # your helper
+  # Reconstruct Var via VR/VC using your existing pathway for verification
+  parts <- VR_VC_delta(delta_moments(MA, MB, MAB), N0, N1)
+  vR <- parts$VR_delta
+  vC <- parts$VC_delta
+  v_design <- switch(design,
+                     FC = (1/NR) * vR + 1.0   * vC,
+                     PSP_equal = (1/NR) * vR + (1.0/G) * vC,
+                     PSP_unequal = (1/NR) * vR + weight_w * vC)
+  pow <- power_two_sided(deltaA, v_design, alpha = alpha)
   
-  #simulate each random effects term in the model (equation A2)
-  #random-reader effect
-  R<-rnorm(readers, 0, sqrt(sigma_r))
-  
-  #random-case effect
-  C<- rnorm(total_ss, 0, sqrt(sigma_c))
-  
-  #random modality-reader effect
-  TR<- rnorm(readers*modalities, 0, sqrt(sigma_tr))
-  
-  #random modality-case effect
-  TC<- rnorm(total_ss*modalities, 0, sqrt(sigma_tc))
-  
-  #random reader-case effect
-  RC<- rnorm(readers*total_ss, 0, sqrt(sigma_rc))
-  
-  #random effect due to pure error (also includes 3 way interaction per this paper https://pmc.ncbi.nlm.nih.gov/articles/PMC9497942/)
-  TRC<- rnorm(readers*total_ss*modalities, 0, sqrt(sigma_trc))
-  
-  
-  # # even diseased/non-diseased split
-  # disease_cases <- total_ss / 2  
-  # nondisease_cases <- total_ss / 2 
-  # 
-  # # cases per block (rounded up to ensure every case is assigned a truth state)
-  # #block_ss <- ceiling(total_ss / blocks)
-  # 
-  # base_disease_per_block <- floor(disease_cases / blocks)
-  # base_nondisease_per_block <- floor(nondisease_cases / blocks)
-  # 
-  # extra_disease_cases <- disease_cases %% blocks
-  # extra_nondisease_cases <- nondisease_cases %% blocks
-  # 
-  # disease_distribution <- rep(base_disease_per_block, blocks)
-  # nondisease_distribution <- rep(base_nondisease_per_block, blocks)
-  # 
-  # disease_distribution[sample(1:blocks, extra_disease_cases)] <- disease_distribution[sample(1:blocks, extra_disease_cases)] + 1
-  # nondisease_distribution[sample(1:blocks, extra_nondisease_cases)] <- nondisease_distribution[sample(1:blocks, extra_nondisease_cases)] + 1
-  # 
-  # # truth assignments by block
-  # truth_blocks <- unlist(lapply(1:blocks, function(b) {
-  #   c(rep("disease", modalities * disease_distribution[b]),
-  #     rep("nondisease", modalities * nondisease_distribution[b]))
-  # }))
-  # 
-  # 
-  # truth <- rep(truth_blocks, times = readers)
-  
-  # target number of disease/nondisease cases overall
-  disease_total <- total_ss / 2
-  nondisease_total <- total_ss / 2
-  
-  # start with floor(block_ss / 2) disease per block
-  disease_per_block <- rep(floor(block_ss / 2), blocks)
-  nondisease_per_block <- rep(block_ss, blocks) - disease_per_block
-  
-  # adjust to ensure total matches disease_total
-  disease_adjustment <- disease_total - sum(disease_per_block)
-  
-  if (disease_adjustment != 0) {
-    adjust_blocks <- sample(1:blocks, abs(disease_adjustment))
-    disease_per_block[adjust_blocks] <- disease_per_block[adjust_blocks] + sign(disease_adjustment)
-    nondisease_per_block[adjust_blocks] <- nondisease_per_block[adjust_blocks] - sign(disease_adjustment)
-  }
-  
-  # create truth values for each block, expanding by modalities
-  truth_blocks <- unlist(lapply(1:blocks, function(b) {
-    c(rep("disease", modalities * disease_per_block[b]),
-      rep("nondisease", modalities * nondisease_per_block[b]))
-  }))
-  
-  # expand to full reader-modality-case structure
-  truth <- rep(truth_blocks, times = readers)
-  
-  
-  reader <- rep(1:readers, each = total_ss * modalities)
-  modality <- rep(c(1, 2), times = total_ss * readers)
-  case <- rep(rep(1:total_ss, each = modalities), times = readers)
-  
-  reader_block <- rep(rep(1:blocks, each = readers_per_block), each = block_ss * modalities)
-  case_block <- rep(rep(1:blocks, each = block_ss * modalities), times = readers)
-  
-  
-  
-  #remove data to make split plot
-  # print(paste("length reader:",length(reader)))
-  # print(paste("length case:",length(case)))
-  # print(paste("length truth:",length(truth)))
-  # print(paste("length modality:",length(modality)))
-  # print(paste("length case_block:",length(case_block)))
-  # print(paste("length reader_block:",length(reader_block)))
-  
-  id_df <- data.frame(reader, case, truth, modality, case_block, reader_block)
-  
-  id_df <- id_df %>%
-    mutate(truth_binary = ifelse(truth == "disease", 1, 0)) %>%
-    filter(case_block == reader_block)
-  
-  id_df <- id_df %>%
-    mutate(block = case_block) %>%
-    select(-reader_block, -case_block)
-  
-  
-  
-  
-  #generate scores
-  dat<- id_df %>%
-    mutate(mu = ifelse(truth == "disease", mu_disease, mu_nondisease),
-           tau = case_when(truth == "disease" & modality == 1 ~ tau_disease_m1,
-                           truth == "disease" & modality == 2 ~ tau_disease_m2,
-                           truth == "nondisease" & modality == 1 ~ tau_nondisease_m1,
-                           truth == "nondisease" & modality == 2 ~ tau_nondisease_m2),
-           R = R[reader],
-           C = C[case],
-           TR = TR[reader + (modality-1)*readers],
-           TC = TC[case+(modality-1)*(total_ss)],
-           RC = RC[case + (reader-1)*total_ss],
-           TRC = TRC[case + (modality-1)*total_ss + (reader-1)*total_ss*modalities],
-           score = mu + tau + R + C + TR + TC + RC + TRC)
-  
-  
-  dat_clean<-dat %>% 
-    select(reader, case, modality, truth_binary, score, block) %>%
-    mutate(reader = as.factor(paste0("reader", reader)),
-           case = as.factor(paste0("case", case)),
-           modality = as.factor(ifelse(modality == 1, "TestA", "TestB")),
-           block = as.factor(paste0("block", block)))
-  
-  
-  return(dat_clean)
+  list(feasible = TRUE,
+       design = design,
+       NR = NR,
+       r = r,
+       AUC1 = AUCA, AUC2 = AUCB, deltaA = deltaA,
+       N0 = N0, N1 = N1,
+       var_delta = v_design,
+       achieved_power = pow,
+       target_power = target_power,
+       alpha = alpha)
 }
 
 
-
-#simulate multiple split-plot MRMC studies
-# n is the desired number of simulated datasets (set to 2000 in the paper)
-sim_splitplot_cardy<- function(n=10,
-                               mu_nondisease = 0, 
-                               mu_disease = 1.5, 
-                               hypothesis = "alt",
-                               tau = 0.25,
-                               sigma_r = 0.011, sigma_c = 0.1,
-                               sigma_rc = 0.2, sigma_tr = 0.03,
-                               sigma_tc = 0.1, sigma_trc = 0.2, 
-                               #readers = 6,
-                               #total_ss = 120,
-                               block_ss = 60,
-                               readers_per_block = 3,
-                               blocks = 2,
-                               modalities = 2) {
-  sim_data<-list()
-  for (i in 1:n) {
-    sim_data[[i]]<- sim_one_splitplot_cardy(mu_nondisease = mu_nondisease, 
-                                            mu_disease = mu_disease, 
-                                            hypothesis = hypothesis,
-                                            tau = tau,
-                                            sigma_r = sigma_r, sigma_c = sigma_c,
-                                            sigma_rc = sigma_rc, sigma_tr = sigma_tr,
-                                            sigma_tc = sigma_tc, sigma_trc = sigma_trc, 
-                                            block_ss = block_ss,
-                                            readers_per_block = readers_per_block,
-                                            blocks = blocks,
-                                            modalities = modalities)
-    #print(paste0("Simulated dataset ", i, " of ", n))
+uniroot_case_ss <- function(params, NR, 
+                             design = c("FC","PSP_equal","PSP_unequal"),
+                             r = 1, G = NULL, NR_groups = NULL,
+                             alpha = 0.05, target_power = 0.80,
+                             search_min = 10, search_max = 5000) {
+  design <- match.arg(design)
+  
+  # Extract deltas and AUCs
+  delta1 <- qnorm(params$AUC1) * sqrt(2*(params$sigma_r + params$sigma_C + params$sigma_RC) +
+                                        2*(params$sigma_tr + params$sigma_TC + params$sigma_trc))
+  delta2 <- qnorm(params$AUC2) * sqrt(2*(params$sigma_r + params$sigma_C + params$sigma_RC) +
+                                        2*(params$sigma_tr + params$sigma_TC + params$sigma_trc))
+  
+  AUCA <- params$AUC1
+  AUCB <- params$AUC2
+  deltaA <- AUCB - AUCA
+  
+  # Precompute sigma and moments (independent of N0/N1)
+  sigmas <- build_sigma_sums(params)
+  moments_df <- compute_moments_df(delta1, delta2, sigmas, AUCA, AUCB)
+  MA  <- as.numeric(moments_df[moments_df$modality == "A", paste0("M", 1:8)])
+  MB  <- as.numeric(moments_df[moments_df$modality == "B", paste0("M", 1:8)])
+  MAB <- as.numeric(moments_df[moments_df$modality == "Cross", paste0("M", 1:8)])
+  
+  # Power function in terms of N0
+  f_power <- function(N0) {
+    N1 <- ceiling(r * N0)
+    varD <- var_deltaA(MA, MB, MAB, N0, N1, NR, design = design, G = G, NR_groups = NR_groups)
+    power_two_sided(deltaA, varD, alpha = alpha)
   }
   
-  return(sim_data)
+  # Function for root finding: f(N0) - target_power = 0
+  f_root <- function(N0) f_power(N0) - target_power
+  
+  # Check feasibility
+  if (f_root(search_max) < 0) {
+    return(list(feasible = FALSE, design = design, NR = NR, r = r,
+                AUC1 = AUCA, AUC2 = AUCB, deltaA = deltaA,
+                N0 = NA, N1 = NA, var_delta = NA,
+                achieved_power = f_power(search_max),
+                target_power = target_power, alpha = alpha))
+  }
+  
+  # Solve for N0 using uniroot
+  sol <- uniroot(f_root, lower = search_min, upper = search_max)
+  
+  N0_opt <- ceiling(sol$root)
+  N1_opt <- ceiling(r * N0_opt)
+  
+  varD_opt <- var_deltaA(MA, MB, MAB, N0_opt, N1_opt, NR, design = design, G = G, NR_groups = NR_groups)
+  power_opt <- power_two_sided(deltaA, varD_opt, alpha = alpha)
+  
+  list(feasible = TRUE,
+       design = design,
+       NR = NR,
+       r = r,
+       AUC1 = AUCA,
+       AUC2 = AUCB,
+       deltaA = deltaA,
+       N0 = N0_opt,
+       N1 = N1_opt,
+       var_delta = varD_opt,
+       achieved_power = power_opt,
+       target_power = target_power,
+       alpha = alpha)
 }
-
-
 
 
 

@@ -28,6 +28,7 @@ source("functions_moments.R")
 library(purrr)
 library(gt)
 library(tidyverse)
+library(dplyr)
 ```
 
 ```{r}
@@ -128,9 +129,10 @@ converted_RMH_params<- map_df(tab1_OR_params, OR_to_RMH)
 # ---- run all scenarios ----
 struct<-c(rep("HH", 3), rep("HL", 3), rep("LH", 3), rep("LL", 3))
 
-converted_RMH_params2<-converted_RMH_params %>% select(n0, n1, delta1, delta2, 
-                                                       var_R, var_TR, var_C,
-                                                       var_TC, var_RC, var_error) %>%
+converted_RMH_params2<-converted_RMH_params %>% 
+  select(n0, n1, delta1, delta2, 
+         var_R, var_TR, var_C, 
+         var_TC, var_RC, var_error) %>%
   mutate(structure = struct)
 
 
@@ -178,7 +180,170 @@ results_gt2 <- results_wide2 %>%
 results_gt2
 ```
 
-## References (need to format consistantly)
+## Validate Sample Size with Table 3:
+
+Note: The sample sizes in Table 3 in Chen/Gong/Gallas by iteratively solving the number of cases each reader needs to read such that a power of 80% is achieved. Our sample sizes were also calculated iteratively using uniroot.
+
+```{r}
+
+results_FC <- purrr::map_df(
+  scenarios,
+  ~ {
+    out <- uniroot_case_ss(.x, NR = 16, design = "FC", r = 0.75)
+    tibble::as_tibble(out) %>% mutate(structure = .x$structure)
+  }
+)
+
+results_PSP2 <- purrr::map_df(
+  scenarios,
+  ~ {
+    out <- uniroot_case_ss(.x, NR = 16, design = "PSP_equal", G = 2, r = 0.75)
+    tibble::as_tibble(out) %>% mutate(structure = .x$structure, design = "PSP2")
+  }
+)
+
+results_PSP4 <- purrr::map_df(
+  scenarios,
+  ~ {
+    out <- uniroot_case_ss(.x, NR = 16, design = "PSP_equal", G = 4, r = 0.75)
+    tibble::as_tibble(out) %>% mutate(structure = .x$structure, design = "PSP4")
+  }
+)
+
+results_PSP8 <- purrr::map_df(
+  scenarios,
+  ~ {
+    out <- uniroot_case_ss(.x, NR = 16, design = "PSP_equal", G = 8, r = 0.75)
+    tibble::as_tibble(out) %>% mutate(structure = .x$structure, design = "PSP8")
+  }
+)
+
+
+
+# Combine them
+results_all <- bind_rows(results_FC, results_PSP2, results_PSP4, results_PSP8)
+
+
+
+results_wide_ss <- results_all %>%
+  mutate(
+    # per-reader workload
+    N_total_reader = N0 + N1,
+    # group multiplier
+    G = case_when(
+      design == "FC"   ~ 1L,
+      design == "PSP2" ~ 2L,
+      design == "PSP4" ~ 4L,
+      design == "PSP8" ~ 8L,
+      TRUE ~ 1L
+    ),
+    # total distinct across groups
+    N_total_distinct  = (N0 + N1) * G
+  ) %>%
+  select(structure, design, AUC1, AUC2,
+         N_total_reader, N_total_distinct, achieved_power)
+
+# Pivot wider so each design (FC, PSP2, PSP4, PSP8) becomes columns
+results_wide_ss <- results_wide_ss %>%
+  tidyr::pivot_wider(
+    id_cols = c(structure, AUC1, AUC2),
+    names_from = design,
+    values_from = c(N_total_reader, N_total_distinct, achieved_power)
+  )
+
+# Build gt table with top-level spanners (like Chen Table 3)
+results_gt_ss <- results_wide_ss %>%
+  gt(rowname_col = "structure") %>%
+  tab_spanner(
+    label = "Cases per Reader",
+    columns = starts_with("N_total_reader")
+  ) %>%
+  tab_spanner(
+    label = "Total Number of Cases",
+    columns = starts_with("N_total_distinct")
+  ) %>%
+  tab_spanner(
+    label = "Achieved Power",
+    columns = starts_with("achieved_power")
+  ) %>%
+  cols_label(
+    N_total_reader_FC = "FC", N_total_reader_PSP2 = "PSP2",
+    N_total_reader_PSP4 = "PSP4", N_total_reader_PSP8 = "PSP8",
+    N_total_distinct_FC = "FC", N_total_distinct_PSP2 = "PSP2",
+    N_total_distinct_PSP4 = "PSP4", N_total_distinct_PSP8 = "PSP8",
+    achieved_power_FC = "FC", achieved_power_PSP2 = "PSP2",
+    achieved_power_PSP4 = "PSP4", achieved_power_PSP8 = "PSP8"
+  ) %>%
+  fmt_number(columns = starts_with("N_total_reader"), decimals = 0) %>%
+  fmt_number(columns = starts_with("N_total_distinct"), decimals = 0) %>%
+  fmt_number(columns = starts_with("achieved_power"), decimals = 3)
+
+
+results_gt_ss
+
+
+
+```
+
+## Validate Sample Size with MRMCsamplesize:
+
+```{r}
+
+library(MRMCsamplesize)
+
+
+
+results_pkg_df <- do.call(rbind, lapply(seq_along(tab1_OR_params), function(i) {
+  scen <- tab1_OR_params[[i]]
+  res <- sampleSize_MRMC(
+    endpoint = "AUC",
+    J = 16,
+    delta = scen$AUC2 - scen$AUC1,
+    rangeb = 2 * sqrt(scen$var_R),
+    rangew = 2 * sqrt(scen$var_TR + scen$var_error),
+    theta = mean(c(scen$AUC1, scen$AUC2)),
+    R = 0.75, 
+    r1 = scen$corr1,
+    r2 = scen$corr2,
+    r3 = scen$corr3,
+    alpha = 0.05,
+    power = 0.80
+  )
+  
+  data.frame(
+    scenario = i,
+    AUC1 = scen$AUC1,
+    AUC2 = scen$AUC2,
+    delta = scen$AUC2 - scen$AUC1,
+    theta = mean(c(scen$AUC1, scen$AUC2)),
+    rangeb = 4 * sqrt(scen$var_R),
+    rangew = 4 * sqrt(scen$var_TR + scen$var_error),
+    r1 = scen$corr1,
+    r2 = scen$corr2,
+    r3 = scen$corr3,
+    sample_size = res$sampleSize
+  )
+}))
+
+
+
+
+
+# sampleSize_MRMC(endpoint = "auc",
+#                 J = 16,
+#                 delta = 0.05,
+#                 rangeb = 4 * sqrt(scen$var_R),
+#                 rangew = 4 * sqrt(scen$var_TR + scen$var_error),
+#                 theta = mean(scen$AUC1,scen$AUC2),
+#                 R = 0.75, 
+#                 r1 = scen$corr1,
+#                 r2 = scen$corr2,
+#                 r3 = scen$corr3)
+
+
+```
+
+## References (need to format consistently)
 
 Chen, W; Gong, Q; Gallas, B. D, 'Paired split-plot designs of multireader multicase studies,' J. Med. Imag. **5**(3), 031410 (2018)
 
