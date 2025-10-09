@@ -29,6 +29,7 @@ library(purrr)
 library(gt)
 library(tidyverse)
 library(dplyr)
+library(fpow)
 ```
 
 ```{r}
@@ -291,42 +292,108 @@ results_gt_ss
 
 library(MRMCsamplesize)
 
+tab1_df <- bind_rows(tab1_OR_params, .id = "scenario")
 
+tab1_mrmc_ss_params <- tab1_df %>% rowwise() %>%
+  mutate(delta = AUC2-AUC1,
+         J = 16,
+         lambda = ncparamF(0.05, 1-0.8, nu1 = 1, nu2 = 1*(16-1)),
+         K=1,
+         rangew_new_num_num = (J*delta^2)/(2*lambda)-var_TR,
+         rangew_new_num_denom = (1-corr1) + (J-1)*(corr2-corr3),
+         rangew_new_num = (4*sqrt(var_error-rangew_new_num_num/rangew_new_num_denom)),
+         rangew_new_denom = sqrt(1/(K*((1-corr1) + (J-1)*(corr2-corr3))+1)),
+         rangew_new = rangew_new_num/rangew_new_denom
+         ) %>%
+  mutate(rangew_new = case_when(is.nan(rangew_new) ~ 0.000001,
+                                .default = rangew_new))
 
-results_pkg_df <- do.call(rbind, lapply(seq_along(tab1_OR_params), function(i) {
-  scen <- tab1_OR_params[[i]]
-  res <- sampleSize_MRMC(
-    endpoint = "AUC",
-    J = 16,
-    delta = scen$AUC2 - scen$AUC1,
-    rangeb = 2 * sqrt(scen$var_R),
-    rangew = 2 * sqrt(scen$var_TR + scen$var_error),
-    theta = mean(c(scen$AUC1, scen$AUC2)),
-    R = 0.75, 
-    r1 = scen$corr1,
-    r2 = scen$corr2,
-    r3 = scen$corr3,
-    alpha = 0.05,
-    power = 0.80
-  )
-  
-  data.frame(
-    scenario = i,
-    AUC1 = scen$AUC1,
-    AUC2 = scen$AUC2,
-    delta = scen$AUC2 - scen$AUC1,
-    theta = mean(c(scen$AUC1, scen$AUC2)),
-    rangeb = 4 * sqrt(scen$var_R),
-    rangew = 4 * sqrt(scen$var_TR + scen$var_error),
-    r1 = scen$corr1,
-    r2 = scen$corr2,
-    r3 = scen$corr3,
-    sample_size = res$sampleSize
-  )
-}))
+#rb = 1 - varTR/varR
+
+# new rangew:
+# depends on J, delta, K, lambda, var_TR, var_error, corr1, corr2, corr3
+# rangew_new_num_num <- (J*delta^2)/(2*lambda)-scen$var_TR
+# rangew_new_num_denom <- (1-scen$corr1) + (J-1)*(scen$corr2-scen$corr3)
+# rangew_new_num <- (4*sqrt(scen$var_error-rangew_new_num_num/rangew_new_num_denom))
+# rangew_new_denom <- sqrt(1/(K*((1-scen$corr1) + (J-1)*(scen$corr2-scen$corr3))+1))
+# 
+# rangew_new <- rangew_new_num/rangew_new_denom
+###### error on scenario 12... var_error is so small that it tries to take neg sqrt
 
 
 
+results_pkg_df <- tab1_mrmc_ss_params %>%
+  mutate(J = 16) %>%
+  pmap_dfr(function(n0, n1, AUC1, AUC2, var_R, var_TR, var_error,
+                    cov1, cov2, cov3, corr1, corr2, corr3, b,
+                    mean_to_sig1, mean_to_sig2, Pr1_improper,
+                    Pr2_improper, delta, J, lambda, K,
+                    rangew_new_num_num, rangew_new_num_denom,
+                    rangew_new_num, rangew_new_denom, rangew_new, ...) {
+
+    res <- sampleSize_MRMC(
+      endpoint = "AUC",
+      J = J,
+      delta = 0.05,
+      rangeb = 4 * sqrt(var_R),      # correct
+      rangew = rangew_new,
+      theta = min(c(AUC1, AUC2)),
+      R = 4/3,
+      r1 = corr1,
+      r2 = corr2,
+      r3 = corr3,
+      rb = 1 - (var_TR / var_R),
+      alpha = 0.05,
+      power = 0.80,
+      reader_var_estimation_method = "not normal"
+    )$ORSampleSizeResults
+
+    # Return as tibble (one row per scenario)
+    as_tibble(res)
+  })
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# results_pkg_df <- do.call(rbind, lapply(seq_along(tab1_OR_params), function(i) {
+#   scen <- tab1_OR_params[[i]]
+#   res <- sampleSize_MRMC(
+#     endpoint = "AUC",
+#     J = 16,
+#     delta = 0.05,
+#     rangeb = 4*sqrt(scen$var_R), #this is correct from line 116 in mrmcsamplesize
+#     rangew = 4*sqrt(scen$var_TR), ## this might not be quite this simple
+#     theta = min(c(scen$AUC1, scen$AUC2)),
+#     R = 4/3, 
+#     r1 = scen$corr1,
+#     r2 = scen$corr2,
+#     r3 = scen$corr3,
+#     rb = 1 - (scen$var_TR/scen$var_R),
+#     alpha = 0.05,
+#     power = 0.80,
+#     reader_var_estimation_method = "not normal"
+#   )$ORSampleSizeResults
+# }))
+# 
+# 
+# results_pkg_df
 
 
 # sampleSize_MRMC(endpoint = "auc",

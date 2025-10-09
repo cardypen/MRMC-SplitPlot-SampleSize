@@ -48,8 +48,8 @@ OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
   rmh <- OR_to_RMH(
     AUC1 = AUC1,
     AUC2 = AUC2,
-    var_R = inter_var*4, #### multiply by 4 to convert from range to var
-    var_TR = intra_var*4, #### multiply by 4 to convert from range to var
+    var_R = inter_var/4, #### DIVIDE by 4 to convert from range to sd
+    var_TR = intra_var/4, #### DIVIDE by 4 to convert from range to sd
     corr1 = 0.47,  # average across Rockette studies
     corr2 = 0.35, 
     corr3 = 0.3,
