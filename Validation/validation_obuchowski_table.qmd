@@ -1,0 +1,49 @@
+---
+title: "Validation - Obuchowski Sample Size Table"
+format:   
+  html:
+    self-contained: true
+    toc: true
+    number-depth: 3
+editor: visual
+execute-dir: project
+execute:
+  echo: false
+  warning: false
+---
+
+## Compare our Sample Size to Obuchowski Table
+
+```{r}
+
+source("functions_moments.R")
+
+library(purrr)
+library(gt)
+library(tidyverse)
+library(dplyr)
+
+```
+
+```{r}
+
+# --- Generate combined Table 1 + 2 scenario grid ---
+tab2_OR_scenarios <- build_OR_scenarios()
+head(tab2_OR_scenarios)
+
+```
+
+```{r}
+
+mrmc_ss(readers = 4, accuracy_level = 0.75, 
+        delta = 0.05, ratio = 2, rangeb = 0.05, rangew = 0.025, 
+        r1 = 0.47, r2 = 0.3, r3 = 0.3, rb = 0.8, 
+                            design = "FC",
+                            G = NULL, NR_groups = NULL,
+                            alpha = 0.05, target_power = 0.80,
+                            search_min = 10, search_max = 5000)
+
+
+```
+
+## References

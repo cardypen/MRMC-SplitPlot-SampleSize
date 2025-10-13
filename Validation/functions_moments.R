@@ -6,31 +6,59 @@ library(dplyr)
 library(MRMCaov)
 library(tidyverse)
 library(gt)
+library(fpow)
 
 # Specify OR parameters
 
-# From Table 1 in Obuchowski 2000
+library(dplyr)
+
+# --- Table 1 (Obuchowski 2000): rangeb and rangew ---
+# Each entry: c(rangeb, rangew)
 var_table <- list(
-  S = c(0.005, 0.01),
-  M = c(0.025, 0.05),
-  L = c(0.05, 0.10)
+  S = c(rangew = 0.005, rangeb = 0.01),
+  M = c(rangew = 0.025, rangeb = 0.05),
+  L = c(rangew = 0.05,  rangeb = 0.10)
 )
 
-#########################
-### Define Scenarios ###
-#########################
-
-# All combinations with ratio = 1:1 only (Table 2 in Obuchowski 2000)
+# --- Build all OR-style scenarios (Table 2) ---
 build_OR_scenarios <- function() {
-  expand.grid(
+  
+  base_grid <- expand.grid(
     readers = c(4, 6, 10),
     observer_var = c("S", "M", "L"),
     accuracy_level = c(0.75, 0.90),
     delta = c(0.05, 0.10, 0.15),
+    ratio = c(1, 2, 4),   # non-diseased : diseased ratio
     stringsAsFactors = FALSE
   ) %>%
-    filter(!(readers == 4 & observer_var == "L"))  # Infeasible per paper
+    arrange(ratio, readers, observer_var, accuracy_level, delta) %>%
+    mutate(r1 = 0.47,
+           r2 = 0.30,
+           r3 = 0.30,
+           rb = 0.80)
+  
+  # Convert var_table list to data frame for joining
+  var_df <- tibble(
+    observer_var = names(var_table),
+    rangeb = sapply(var_table, function(x) x["rangeb"]),
+    rangew = sapply(var_table, function(x) x["rangew"])
+  )
+  
+  left_join(base_grid, var_df, by = "observer_var")
 }
+
+
+# # All combinations with ratio = 1:1 only (Table 2 in Obuchowski 2000)
+# build_OR_scenarios <- function() {
+#   expand.grid(
+#     readers = c(4, 6, 10),
+#     observer_var = c("S", "M", "L"),
+#     accuracy_level = c(0.75, 0.90),
+#     delta = c(0.05, 0.10, 0.15),
+#     stringsAsFactors = FALSE
+#   ) %>%
+#     filter(!(readers == 4 & observer_var == "L"))  # Infeasible per paper
+# }
 
 
 # Use OR to RMH
@@ -310,7 +338,7 @@ compute_moments_df <- function(DeltaA, DeltaB, sigmas, AUCA, AUCB) {
 ### Moments -> Var(ΔA) -> Power (Chen, Gong, Gallas 2018) ###
 #############################################################
 
-# Build c1..c4 for given N0, N1 (used in VR^Δ and VC^Δ)
+# Build c1..c4 for given N0, N1 (used in VR^Δ and VC^Δ) (from Chen, Gong, Gallas 2018)
 .c_coeffs <- function(N0, N1) {
   c1 <- 1/(N0*N1)
   c2 <- (N0 - 1)/(N0*N1)
@@ -896,6 +924,180 @@ uniroot_case_ss <- function(params, NR,
        N0 = N0_opt,
        N1 = N1_opt,
        var_delta = varD_opt,
+       achieved_power = power_opt,
+       target_power = target_power,
+       alpha = alpha)
+}
+
+
+
+
+
+
+
+mrmc_ss <- function(readers, 
+                    accuracy_level, 
+                    delta, 
+                    ratio, 
+                    rangeb, 
+                    rangew, 
+                    r1, r2, r3, rb, 
+                            design = c("FC","PSP_equal","PSP_unequal"),
+                            G = NULL, NR_groups = NULL,
+                            alpha = 0.05, target_power = 0.80,
+                            search_min = 10, search_max = 5000) {
+  design <- match.arg(design)
+  
+  
+  #### needs to take in MRMC sample size style params (readers, accuracy_level, delta, ratio, rangeb, rangew, r1, r2, r3, rb)
+  
+  ### then these are converted to OR parameters internally
+  
+  sb <- rangeb/4
+  sw <- rangew/4
+  
+  lambda <- ncparamF(alpha, 1-target_power, nu1 = 1, nu2 = 1*(readers-1)) #ndf (nu1) is always number of treatments - 1.
+  K<-1
+  
+  varTR <- sb^2*(1-rb)
+  varR <- sb^2
+  varW <- sw^2
+  num <- ((readers*delta^2)/ (2*lambda)) -  (varTR + sw^2/K)
+  den <- (1-r1) + (readers-1)*(r2-r3)
+
+  sigma.square.c = num/den
+
+  varE <-  sigma.square.c + sw^2
+  Cov1 <- r1*varE
+  Cov2 <- r2*varE
+  Cov3 <- r3*varE
+  
+  N_total <- 570
+  n1 <- round(N_total / (1 + ratio))     # diseased
+  n0 <- N_total - n1                     # non-diseased
+  
+  print(varE)
+  
+  ### then those are converted to RMH parameters, also internally
+  
+  # RMH_params <- OR_to_RMH(
+  #   AUC1 = accuracy_level,
+  #   AUC2 = accuracy_level + delta,
+  #   var_R = varR,
+  #   var_TR = varTR,
+  #   corr1 = r1,
+  #   corr2 = r2,
+  #   corr3 = r3,
+  #   n0 = n0,
+  #   n1 = n1,
+  #   var_error = varE,
+  #   b_method = "unspecified",
+  #   #b_le_1 = FALSE
+  #   # b_method = "specified",
+  #   # b_input = 1 # this is true under the diseased/nondiseased equal variance assumption
+  #   # b_method = "mean_to_sigma", mean_sig_input = 2
+  # )
+  
+  RMH_params <- tryCatch({
+    res <- OR_to_RMH(
+      AUC1 = accuracy_level,
+      AUC2 = accuracy_level + delta,
+      var_R = varR,
+      var_TR = varTR,
+      corr1 = r1, corr2 = r2, corr3 = r3,
+      n0 = n0, n1 = n1,
+      var_error = varE,         
+      b_method = "unspecified"
+    )
+    if (is.null(res$b) || is.na(res$b)) stop("unspecified b yielded NA")
+    res
+  }, error = function(e) {
+    OR_to_RMH(
+      AUC1 = accuracy_level,
+      AUC2 = accuracy_level + delta,
+      var_R = varR,
+      var_TR = varTR,
+      corr1 = r1, corr2 = r2, corr3 = r3,
+      n0 = n0, n1 = n1,
+      b_method = "specified",
+      b_input = 1 # this is true under the diseased/nondiseased equal variance assumption
+    )
+  })
+  
+  params <- RMH_params %>%
+    mutate(AUC1 = accuracy_level,
+           AUC2 = accuracy_level + delta) %>%
+    rename(sigma_r = var_R,
+           sigma_tr = var_TR,
+           sigma_C = var_C,
+           sigma_TC = var_TC,
+           sigma_RC = var_RC,
+           sigma_trc = var_error)
+  
+  ### then the sample size logic below (from moments), can be used
+  
+  # Extract deltas and AUCs
+  delta1 <- qnorm(params$AUC1) * sqrt(2*(params$sigma_r + params$sigma_C + params$sigma_RC) +
+                                        2*(params$sigma_tr + params$sigma_TC + params$sigma_trc))
+  delta2 <- qnorm(params$AUC2) * sqrt(2*(params$sigma_r + params$sigma_C + params$sigma_RC) +
+                                        2*(params$sigma_tr + params$sigma_TC + params$sigma_trc))
+  
+  # # check delta1 and delta2 from both calculations are equal
+  # print(paste0("delta1: ", round(delta1,3), ", delta2: ", round(delta2,3)))
+  # print(paste0("delta1 from or_to_rmh: ", round(params$delta1,3), ", delta2 from or_to_rmh: ", round(params$delta2,3)))
+  
+  print(params)
+  
+  AUCA <- params$AUC1
+  AUCB <- params$AUC2
+  deltaA <- AUCB - AUCA
+  
+  # Precompute sigma and moments (independent of N0/N1)
+  sigmas <- build_sigma_sums(params)
+  moments_df <- compute_moments_df(delta1, delta2, sigmas, AUCA, AUCB)
+  MA  <- as.numeric(moments_df[moments_df$modality == "A", paste0("M", 1:8)])
+  MB  <- as.numeric(moments_df[moments_df$modality == "B", paste0("M", 1:8)])
+  MAB <- as.numeric(moments_df[moments_df$modality == "Cross", paste0("M", 1:8)])
+  
+  # Power function in terms of N0
+  f_power <- function(N1) {
+    N0 <- ceiling(ratio * N1)
+    varD <- var_deltaA(MA, MB, MAB, N0, N1, readers, design = design, G = G, NR_groups = NR_groups)
+    power_two_sided(deltaA, varD, alpha = alpha)
+  }
+  
+  # Function for root finding: f(N1) - target_power = 0
+  f_root <- function(N1) f_power(N1) - target_power
+  
+  # Check feasibility
+  if (f_root(search_max) < 0) {
+    return(list(feasible = FALSE, design = design, readers = readers, ratio = ratio,
+                AUC1 = AUCA, AUC2 = AUCB, deltaA = deltaA,
+                N0 = NA, N1 = NA, var_delta = NA,
+                achieved_power = f_power(search_max),
+                target_power = target_power, alpha = alpha))
+  }
+  
+  # Solve for N0 using uniroot
+  sol <- uniroot(f_root, lower = search_min, upper = search_max)
+  
+  N1_opt <- ceiling(sol$root)
+  N0_opt <- ceiling(ratio * N1_opt)
+  
+  varD_opt <- var_deltaA(MA, MB, MAB, N0_opt, N1_opt, readers, design = design, G = G, NR_groups = NR_groups)
+  power_opt <- power_two_sided(deltaA, varD_opt, alpha = alpha)
+  
+  list(feasible = TRUE,
+       design = design,
+       readers = readers,
+       ratio = ratio,
+       AUC1 = AUCA,
+       AUC2 = AUCB,
+       deltaA = deltaA,
+       N0 = N0_opt,
+       N1 = N1_opt,
+       N_total = N0_opt + N1_opt,
+       var_deltaA = varD_opt,
        achieved_power = power_opt,
        target_power = target_power,
        alpha = alpha)

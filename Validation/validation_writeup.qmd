@@ -292,6 +292,8 @@ results_gt_ss
 
 library(MRMCsamplesize)
 
+#### use obuchowski table paper instead since it has the parameters needed
+
 tab1_df <- bind_rows(tab1_OR_params, .id = "scenario")
 
 tab1_mrmc_ss_params <- tab1_df %>% rowwise() %>%
