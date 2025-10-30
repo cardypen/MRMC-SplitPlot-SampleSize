@@ -48,24 +48,12 @@ build_OR_scenarios <- function() {
 }
 
 
-# # All combinations with ratio = 1:1 only (Table 2 in Obuchowski 2000)
-# build_OR_scenarios <- function() {
-#   expand.grid(
-#     readers = c(4, 6, 10),
-#     observer_var = c("S", "M", "L"),
-#     accuracy_level = c(0.75, 0.90),
-#     delta = c(0.05, 0.10, 0.15),
-#     stringsAsFactors = FALSE
-#   ) %>%
-#     filter(!(readers == 4 & observer_var == "L"))  # Infeasible per paper
-# }
-
-
-# Use OR to RMH
 
 ####################################
 ### Convert OR -> RMH parameters ###
 ####################################
+
+# wrapper for OR_to_RMH from MRMCaov
 
 OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
   AUC1 <- accuracy_level - (delta/2)
@@ -106,17 +94,7 @@ OR_scenario_to_RMH <- function(readers, observer_var, accuracy_level, delta) {
 #############################
 ### Moments & Variances  ####
 #############################
-
-# Helper: normal PDF/CDF wrappers (base R pnorm/dnorm are fine)
-
-# Given RMH params from OR_to_RMH (equal across truth & modalities),
-# map them to the equal-variance special case of the generalized R&M model.
-# In this equal-component case:
-#   σ_R0=σ_R1=var_R;  σ_C0=σ_C1=var_C;  σ_RC0=σ_RC1=var_RC
-#   σ_AR0=σ_AR1=var_TR; σ_AC0=σ_AC1=var_TC; σ_ARC0=σ_ARC1=var_error
-# Then:
-#   σΩ      = 2*(var_R + var_C + var_RC)
-#   σA = σB = 2*(var_TR + var_TC + var_error)
+# (Gallas & Hillis 2014)
 
 build_sigma_sums <- function(rmh) {
   var_R     <- rmh$sigma_r
@@ -134,7 +112,7 @@ build_sigma_sums <- function(rmh) {
     sigma_Omega = sigma_Omega,
     sigma_A     = sigma_mod,
     sigma_B     = sigma_mod,
-    # For Table 3 rows (equal-components simplifications):
+    # For Table 3 rows (equal-components simplifications): (Gallas & Hillis 2014)
     sigmaA_l = list(
       `2` = (var_TC + var_error),
       `3` = (var_TC + var_error),
@@ -144,7 +122,7 @@ build_sigma_sums <- function(rmh) {
       `7` = var_TC + 2*(var_TR + var_error)
     ),
     sigmaOmega_l = list(
-      # For covariance rows in Table 3; these also appear inside single-modality integrals (Eq. 12)
+      # appear inside single-modality integrals (Eq. 12) (Gallas & Hillis 2014)
       `1` = 0,
       `2` = (var_C + var_RC),
       `3` = (var_C + var_RC),
@@ -156,7 +134,7 @@ build_sigma_sums <- function(rmh) {
   )
 }
 
-# Coefficients c for fully-crossed design (Table 2)
+# Coefficients c for fully-crossed design (Table 2) (Gallas & Hillis 2014)
 coeff_vector <- function(N0, N1, NR) {
   c1 <- 1/(N0*N1*NR)
   c2 <- (N0-1)/(N0*N1*NR)
@@ -169,67 +147,15 @@ coeff_vector <- function(N0, N1, NR) {
   c(c1,c2,c3,c4,c5,c6,c7,c8)
 }
 
-# Expected AUC from Δ and totals (Eq. 9)
+# Expected AUC from Δ and totals (Eq. 9) (Gallas & Hillis 2014)
 expected_auc <- function(Delta, sigma_Omega, sigma_mod) {
   pnorm( Delta / sqrt(sigma_Omega + sigma_mod) )
 }
 
 
 
-# ####### original
-# # Single-modality moment M_l for l=2..7 (Eq. 12)
-# moment_single_l <- function(l, Delta, sigmas) {
-#   sOm   <- sigmas$sigma_Omega
-#   sMod  <- sigmas$sigma_A   # same form if called for B in this equal-variance case
-#   sOm_l <- sigmas$sigmaOmega_l[[as.character(l)]]
-#   sMod_l<- sigmas$sigmaA_l[[as.character(l)]]
-# 
-#   s_common <- sOm + sMod - sOm_l - sMod_l
-#   denom   <- sqrt(sOm_l + sMod_l)
-# 
-#   integrand <- function(x) {
-#     p <- pnorm( (Delta + x*sqrt(s_common)) / denom )
-#     p*p * dnorm(x)
-#   }
-#   #integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 400L, rel.tol = 1e-7)$value
-#   integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 2000L, rel.tol = 1e-12, abs.tol = 1e-12)$value
-# }
 # ### try "In our software, we simply sample the 1-D integral at 256 points on the interval (−10;10) and use the midpoint rule (rectangle rule)."
-# ### Appendix A Gallas, Hillis under eq 24
-# 
-# 
-# 
-# 
-# # Cross-modality moment MAB_l for l=1..7 (Eq. 15)
-# moment_cross_l <- function(l, DeltaA, DeltaB, sigmas) {
-#   sOm   <- sigmas$sigma_Omega
-#   sOm_l <- sigmas$sigmaOmega_l[[as.character(l)]]
-#   # In equal-variance case σA=σB
-#   sA <- sigmas$sigma_A
-#   sB <- sigmas$sigma_B
-# 
-#   s_common <- sOm - sOm_l
-#   denomA   <- sqrt(sA + sOm_l)
-#   denomB   <- sqrt(sB + sOm_l)
-# 
-#   integrand <- function(x) {
-#     pA <- pnorm( (DeltaA + x*sqrt(s_common)) / denomA )
-#     pB <- pnorm( (DeltaB + x*sqrt(s_common)) / denomB )
-#     pA * pB * dnorm(x)
-#   }
-#   #integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 400L, rel.tol = 1e-7)$value
-#   integrate(integrand, lower = -Inf, upper = Inf, subdivisions = 2000L, rel.tol = 1e-12, abs.tol = 1e-12)$value
-# }
-
-
-
-
-
-
-
-
-# ### try "In our software, we simply sample the 1-D integral at 256 points on the interval (−10;10) and use the midpoint rule (rectangle rule)."
-# ### Appendix A Gallas, Hillis under eq 24
+# ### Appendix A (Gallas & Hillis 2014) under eq 24
 
 midpoint_integral <- function(f, a = -10, b = 10, n = 256) {
   h <- (b - a) / n
@@ -285,7 +211,7 @@ moment_cross_l <- function(l, DeltaA, DeltaB, sigmas, n_points = 256) {
 
 
 
-# Build all 8 moments for a single modality (A or B)
+# Build all 8 moments for a single modality (A or B) (Gallas & Hillis 2014)
 moments_single <- function(Delta, sigmas, AUC) {
   # M1 = AUC ; M8 = AUC^2 ; M2..M7 via integral
   M <- numeric(8)
@@ -295,7 +221,7 @@ moments_single <- function(Delta, sigmas, AUC) {
   M
 }
 
-# Build all 8 cross-modality moments MAB
+# Build all 8 cross-modality moments MAB (Gallas & Hillis 2014)
 moments_cross <- function(DeltaA, DeltaB, sigmas, AUCA, AUCB) {
   M <- numeric(8)
   # l = 1..7 via integral with σΩ(l) (Table 3)
@@ -347,7 +273,7 @@ compute_moments_df <- function(DeltaA, DeltaB, sigmas, AUCA, AUCB) {
   list(c1=c1, c2=c2, c3=c3, c4=c4)
 }
 
-# Given MA, MB, MAB (each length-8), construct Δ-moments (length-8)
+# Given MA, MB, MAB (each length-8), construct Δ-moments (length-8) (Chen, Gong, Gallas 2018) (Section 2.2)
 delta_moments <- function(MA, MB, MAB) {
   # Mk^Δ = Mk^(1) + Mk^(2) - 2 Mk^(1×2)
   MA + MB - 2*MAB
@@ -572,15 +498,15 @@ evaluate_power_check <- function(params, N0, N1, NR, alpha = 0.05) {
   vR <- parts$VR_delta
   vC <- parts$VC_delta
   
-  # design-specific variances
-  # variances <- c(
-  #   FC   = (1/NR) * vR + vC,         # Eq. (11)
-  #   PSP2 = (1/NR) * vR + (1/2) * vC, # Eq. (12) with G=2
-  #   PSP4 = (1/NR) * vR + (1/4) * vC, # G=4
-  #   PSP8 = (1/NR) * vR + (1/8) * vC  # G=8
-  # )
+  #design-specific variances
+  variances <- c(
+    FC   = (1/NR) * vR + vC,         # Eq. (11)
+    PSP2 = (1/NR) * vR + (1/2) * vC, # Eq. (12) with G=2
+    PSP4 = (1/NR) * vR + (1/4) * vC, # G=4
+    PSP8 = (1/NR) * vR + (1/8) * vC  # G=8
+  )
   
-  variances_check<- c(FC = 1.42, PSP2 = )
+  #variances_check<- c(FC = 1.42, PSP2 = )
   
   # compute power for each design
   powers <- map_dbl(variances, ~ power_two_sided(deltaA, .x, alpha))
@@ -608,7 +534,7 @@ evaluate_power_check <- function(params, N0, N1, NR, alpha = 0.05) {
 
 
 ### power function that takes in OR parameters
-
+# inputs: list of parameters including n0, n1, delta1, delta2, var_R, var_TR, var_C, var_TC, var_RC, var_error
 evaluate_power_new <- function(params, NR, alpha = 0.05) {
   N0<-params$n0
   N1<-params$n1
@@ -713,155 +639,7 @@ convert_to_OR <- function(AUC1, AUC2, var_R, var_TR, var_C, var_TC, var_RC, var_
 #############################################
 
 
-# ---- Build S_k and constant term for analytic Var(ΔA) ----
-# weight_w: design weight on V_C^Δ
-#   FC:        w = 1
-#   PSP_equal: w = 1/G
-#   PSP_unequal: w = sum(NR_g^2)/(NR^2)  (pass this as weight_w)
-build_var_coeffs <- function(MA, MB, MAB, NR, weight_w) {
-  # Δ-moments:
-  MD <- delta_moments(MA, MB, MAB)  # length-8
-  
-  # Coeffs for VR^Δ and VC^Δ per c1..c4:
-  # VR^Δ = c1*(MD1-MD5) + c2*(MD2-MD6) + c3*(MD3-MD7) + c4*(MD4-MD8)
-  T_R <- c(MD[1]-MD[5], MD[2]-MD[6], MD[3]-MD[7], MD[4]-MD[8])
-  
-  # VC^Δ = c1*MD5 + c2*MD6 + c3*MD7 - (1 - c4)*MD8
-  #      = -MD8 + (c1*MD5 + c2*MD6 + c3*MD7 + c4*MD8)
-  T_C <- c(MD[5], MD[6], MD[7], MD[8])  # the part multiplied by c's
-  const_term <- weight_w * (-MD[8])     # the -MD8 part
-  
-  # Combine into S_k = (1/NR)*T_Rk + weight_w*T_Ck, for k=1..4
-  S <- (1/NR) * T_R + weight_w * T_C   # length-4: S1..S4
-  
-  # Express Var = const_term + S1*c1 + S2*c2 + S3*c3 + S4*c4
-  # with c1..c4 rewritten as:
-  # c1 = 1/(N0 N1)
-  # c2 = 1/N1 - 1/(N0 N1)
-  # c3 = 1/N0 - 1/(N0 N1)
-  # c4 = 1 - 1/N0 - 1/N1 + 1/(N0 N1)
-  
-  # Collect coefficients:
-  const      <- const_term + S[4]
-  coeff_1N0  <- S[3] - S[4]
-  coeff_1N1  <- S[2] - S[4]
-  coeff_1N0N1<- S[1] - S[2] - S[3] + S[4]
-  
-  list(const = const,
-       A = coeff_1N0,
-       B = coeff_1N1,
-       C = coeff_1N0N1)
-}
-
-# ---- Required variance threshold from (alpha, power, delta_A) ----
-required_variance <- function(deltaA, alpha = 0.05, power = 0.80) {
-  zcrit  <- qnorm(1 - alpha/2)
-  zbeta  <- qnorm(power)
-  (deltaA / (zcrit + zbeta))^2
-}
-
-# ---- Closed-form N0 (then N1=r*N0) given ratio r ----
-solve_cases_closed_form <- function(const, A, B, C, r, Vreq) {
-  # Var(N0) = const + (A + B/r)/N0 + C/(r*N0^2) <= Vreq
-  # Let x = 1/N0:   q x^2 + p x + (const - Vreq) <= 0
-  p <- A + B / r
-  q <- C / r
-  a <- q
-  b <- p
-  c <- const - Vreq
-  disc <- b*b - 4*a*c
-  
-  if (disc < 0) return(NULL) # infeasible at given r and parameters
-  
-  # For a>0 (typically), inequality holds between the two roots
-  x1 <- (-b - sqrt(disc)) / (2*a)
-  x2 <- (-b + sqrt(disc)) / (2*a)
-  xr <- max(x1, x2)          # rightmost root (largest x)
-  
-  if (!is.finite(xr) || xr <= 0) return(NULL)
-  
-  N0 <- ceiling(1 / xr)
-  if (!is.finite(N0) || N0 < 2) N0 <- 2L
-  N0
-}
-
-# ---- Public API: analytic sample size for cases ----
-# params: list with AUC1, AUC2 and sigma_* (your OR_to_RMH -> build_sigma_sums path)
-# NR: number of readers; design: "FC", "PSP_equal", or "PSP_unequal"
-# r: case ratio N1/N0; for PSP_equal set G; for PSP_unequal pass weight_w directly.
-analytic_case_ss <- function(params, NR, design = c("FC","PSP_equal","PSP_unequal"),
-                             r = 1, G = NULL, weight_w = NULL,
-                             alpha = 0.05, target_power = 0.80) {
-  design <- match.arg(design)
-  # Build sigma sums
-  sigmas <- build_sigma_sums(params)
-  
-  # Work with AUC targets directly (your code already does this consistently)
-  AUCA   <- params$AUC1
-  AUCB   <- params$AUC2
-  deltaA <- AUCB - AUCA
-  
-  # Moments
-  delta1 <- qnorm(AUCA) * sqrt(sigmas$sigma_Omega + sigmas$sigma_A)
-  delta2 <- qnorm(AUCB) * sqrt(sigmas$sigma_Omega + sigmas$sigma_B)
-  mdf    <- compute_moments_df(delta1, delta2, sigmas, AUCA, AUCB)
-  
-  MA  <- as.numeric(mdf[mdf$modality == "A",     paste0("M",1:8)])
-  MB  <- as.numeric(mdf[mdf$modality == "B",     paste0("M",1:8)])
-  MAB <- as.numeric(mdf[mdf$modality == "Cross", paste0("M",1:8)])
-  
-  # Design weight w for V_C^Δ
-  w <- switch(design,
-              FC = 1.0,
-              PSP_equal = {
-                if (is.null(G)) stop("Provide G for PSP_equal.")
-                1.0 / G
-              },
-              PSP_unequal = {
-                if (is.null(weight_w)) stop("Provide weight_w for PSP_unequal (sum NR_g^2 / NR^2).")
-                weight_w
-              })
-  
-  # Build coefficients for Var(ΔA) = const + A/N0 + B/N1 + C/(N0*N1)
-  K <- build_var_coeffs(MA, MB, MAB, NR = NR, weight_w = w)
-  
-  # Required variance for target power
-  Vreq <- required_variance(deltaA, alpha = alpha, power = target_power)
-  
-  # Closed-form solution in N0 with N1 = r*N0
-  N0 <- solve_cases_closed_form(const = K$const, A = K$A, B = K$B, C = K$C, r = r, Vreq = Vreq)
-  if (is.null(N0)) {
-    return(list(feasible = FALSE,
-                message = "No finite solution for the given (NR, r, AUCs, variances) and power. Try increasing NR, relaxing power, or changing r."))
-  }
-  N1 <- ceiling(r * N0)
-  
-  # Report achieved power at the rounded integers (sanity check)
-  # Build c-coeffs at these N0,N1 and compute analytic var & power
-  cc <- .c_coeffs(N0, N1) # your helper
-  # Reconstruct Var via VR/VC using your existing pathway for verification
-  parts <- VR_VC_delta(delta_moments(MA, MB, MAB), N0, N1)
-  vR <- parts$VR_delta
-  vC <- parts$VC_delta
-  v_design <- switch(design,
-                     FC = (1/NR) * vR + 1.0   * vC,
-                     PSP_equal = (1/NR) * vR + (1.0/G) * vC,
-                     PSP_unequal = (1/NR) * vR + weight_w * vC)
-  pow <- power_two_sided(deltaA, v_design, alpha = alpha)
-  
-  list(feasible = TRUE,
-       design = design,
-       NR = NR,
-       r = r,
-       AUC1 = AUCA, AUC2 = AUCB, deltaA = deltaA,
-       N0 = N0, N1 = N1,
-       var_delta = v_design,
-       achieved_power = pow,
-       target_power = target_power,
-       alpha = alpha)
-}
-
-
+# takes in RMH params and gives sample size via uniroot
 uniroot_case_ss <- function(params, NR, 
                              design = c("FC","PSP_equal","PSP_unequal"),
                              r = 1, G = NULL, NR_groups = NULL,
@@ -934,7 +712,7 @@ uniroot_case_ss <- function(params, NR,
 
 
 
-
+# takes MRMCsamplesize style inputs and gives sample size via uniroot
 mrmc_ss <- function(readers, 
                     accuracy_level, 
                     delta, 
@@ -974,55 +752,32 @@ mrmc_ss <- function(readers,
   
   N_total <- 570
   n1 <- round(N_total / (1 + ratio))     # diseased
-  n0 <- N_total - n1                     # non-diseased
+  n0 <- N_total - n1 # non-diseased
   
-  print(varE)
+  
+  vars_to_print<-data.frame(varR=varR, varTR=varTR, varE=varE, Cov1=Cov1, Cov2=Cov2, Cov3=Cov3)
+  
+  #print(vars_to_print)
   
   ### then those are converted to RMH parameters, also internally
   
-  # RMH_params <- OR_to_RMH(
-  #   AUC1 = accuracy_level,
-  #   AUC2 = accuracy_level + delta,
-  #   var_R = varR,
-  #   var_TR = varTR,
-  #   corr1 = r1,
-  #   corr2 = r2,
-  #   corr3 = r3,
-  #   n0 = n0,
-  #   n1 = n1,
-  #   var_error = varE,
-  #   b_method = "unspecified",
-  #   #b_le_1 = FALSE
-  #   # b_method = "specified",
-  #   # b_input = 1 # this is true under the diseased/nondiseased equal variance assumption
-  #   # b_method = "mean_to_sigma", mean_sig_input = 2
-  # )
+  RMH_params <- OR_to_RMH(
+    AUC1 = accuracy_level,
+    AUC2 = accuracy_level + delta,
+    var_R = varR,
+    var_TR = varTR,
+    corr1 = r1,
+    corr2 = r2,
+    corr3 = r3,
+    n0 = n0,
+    n1 = n1,
+    var_error = varE,
+    b_method = "specified",
+    b_input = 1 # this is true under the diseased/nondiseased equal variance assumption
+    # b_method = "mean_to_sigma", mean_sig_input = 2
+  )
   
-  RMH_params <- tryCatch({
-    res <- OR_to_RMH(
-      AUC1 = accuracy_level,
-      AUC2 = accuracy_level + delta,
-      var_R = varR,
-      var_TR = varTR,
-      corr1 = r1, corr2 = r2, corr3 = r3,
-      n0 = n0, n1 = n1,
-      var_error = varE,         
-      b_method = "unspecified"
-    )
-    if (is.null(res$b) || is.na(res$b)) stop("unspecified b yielded NA")
-    res
-  }, error = function(e) {
-    OR_to_RMH(
-      AUC1 = accuracy_level,
-      AUC2 = accuracy_level + delta,
-      var_R = varR,
-      var_TR = varTR,
-      corr1 = r1, corr2 = r2, corr3 = r3,
-      n0 = n0, n1 = n1,
-      b_method = "specified",
-      b_input = 1 # this is true under the diseased/nondiseased equal variance assumption
-    )
-  })
+
   
   params <- RMH_params %>%
     mutate(AUC1 = accuracy_level,
@@ -1046,7 +801,7 @@ mrmc_ss <- function(readers,
   # print(paste0("delta1: ", round(delta1,3), ", delta2: ", round(delta2,3)))
   # print(paste0("delta1 from or_to_rmh: ", round(params$delta1,3), ", delta2 from or_to_rmh: ", round(params$delta2,3)))
   
-  print(params)
+  #print(params)
   
   AUCA <- params$AUC1
   AUCB <- params$AUC2
@@ -1100,7 +855,9 @@ mrmc_ss <- function(readers,
        var_deltaA = varD_opt,
        achieved_power = power_opt,
        target_power = target_power,
-       alpha = alpha)
+       alpha = alpha,
+       OR_variances = vars_to_print,
+       moments = moments_df)
 }
 
 
