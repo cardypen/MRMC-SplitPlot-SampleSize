@@ -36,7 +36,7 @@ head(tab2_OR_scenarios)
 
 ```{r}
 
-mrmc_ss(readers = 4, accuracy_level = 0.75, 
+test_write_csv<-mrmc_ss(readers = 4, accuracy_level = 0.75, 
         delta = 0.05, ratio = 1, rangeb = 0.01, rangew = 0.005, 
         r1 = 0.47, r2 = 0.3, r3 = 0.3, rb = 0.8, 
                             design = "FC",
@@ -44,21 +44,28 @@ mrmc_ss(readers = 4, accuracy_level = 0.75,
                             alpha = 0.05, target_power = 0.80,
                             search_min = 10, search_max = 5000)
 
-sampleSize_MRMC(endpoint = "auc",
-  J = 4,
-  delta = 0.05,
-  rangeb = 0.01, 
-  rangew = 0.005,
-  theta = 0.75,
-  R = 1,
-  r1 = 0.47,
-  r2 = 0.3,
-  r3 = 0.3,
-  rb = 0.8,
-  K = 1,
-  power = 0.8,
-  alpha = 0.05,
-  reader_var_estimation_method = "not normal")
+write_imrmc_summary(test_write_csv)
+
+test_write_csv$OR_variances
+test_write_csv$coeffs_8
+test_write_csv$coeffs_4
+
+
+# sampleSize_MRMC(endpoint = "auc",
+#   J = 4,
+#   delta = 0.05,
+#   rangeb = 0.01, 
+#   rangew = 0.005,
+#   theta = 0.75,
+#   R = 1,
+#   r1 = 0.47,
+#   r2 = 0.3,
+#   r3 = 0.3,
+#   rb = 0.8,
+#   K = 1,
+#   power = 0.8,
+#   alpha = 0.05,
+#   reader_var_estimation_method = "not normal")
 
 
 ```

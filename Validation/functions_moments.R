@@ -105,8 +105,8 @@ build_sigma_sums <- function(rmh) {
   var_error <- rmh$sigma_trc
   
   # assuming equal variance for both truth states and both modalities
-  sigma_Omega <- 2*(var_R + var_C + var_RC)
-  sigma_mod   <- 2*(var_TR + var_TC + var_error)  
+  sigma_Omega <- 2*(var_R + var_C + var_RC) #(Gallas & Hillis 2014)(eq. 3)
+  sigma_mod   <- 2*(var_TR + var_TC + var_error)  #(Gallas & Hillis 2014)(eq 4 & 5)
   
   list(
     sigma_Omega = sigma_Omega,
@@ -134,7 +134,7 @@ build_sigma_sums <- function(rmh) {
   )
 }
 
-# Coefficients c for fully-crossed design (Table 2) (Gallas & Hillis 2014)
+#Coefficients c for fully-crossed design (Table 2) (Gallas & Hillis 2014)
 coeff_vector <- function(N0, N1, NR) {
   c1 <- 1/(N0*N1*NR)
   c2 <- (N0-1)/(N0*N1*NR)
@@ -146,6 +146,7 @@ coeff_vector <- function(N0, N1, NR) {
   c8 <- (N0-1)*(N1-1)*(NR-1)/(N0*N1*NR) - 1  # note the "− 1" for the eighth entry
   c(c1,c2,c3,c4,c5,c6,c7,c8)
 }
+
 
 # Expected AUC from Δ and totals (Eq. 9) (Gallas & Hillis 2014)
 expected_auc <- function(Delta, sigma_Omega, sigma_mod) {
@@ -164,7 +165,7 @@ midpoint_integral <- function(f, a = -10, b = 10, n = 256) {
 }
 
 
-moment_single_l <- function(l, Delta, sigmas, n_points = 256) {
+moment_single_l <- function(l, Delta_AB, sigmas, n_points = 256) {
   sOm   <- sigmas$sigma_Omega
   sMod  <- sigmas$sigma_A
   sOm_l <- sigmas$sigmaOmega_l[[as.character(l)]]
@@ -172,9 +173,11 @@ moment_single_l <- function(l, Delta, sigmas, n_points = 256) {
 
   s_common <- sOm + sMod - sOm_l - sMod_l
   denom   <- sqrt(sOm_l + sMod_l)
+  
+  #
 
   f <- function(x) {
-    p <- pnorm((Delta + x * sqrt(s_common)) / denom)
+    p <- pnorm((Delta_AB + x * sqrt(s_common)) / denom)
     p * p * dnorm(x)
   }
 
@@ -202,7 +205,7 @@ moment_cross_l <- function(l, DeltaA, DeltaB, sigmas, n_points = 256) {
 }
 
 
-
+###### try putting this^ in the moments_cross and moments_single functions directly?
 
 
 
@@ -212,11 +215,30 @@ moment_cross_l <- function(l, DeltaA, DeltaB, sigmas, n_points = 256) {
 
 
 # Build all 8 moments for a single modality (A or B) (Gallas & Hillis 2014)
-moments_single <- function(Delta, sigmas, AUC) {
+moments_single <- function(Delta_AB, sigmas, AUC) {
   # M1 = AUC ; M8 = AUC^2 ; M2..M7 via integral
   M <- numeric(8)
   M[1] <- AUC
-  for (l in 2:7) M[l] <- moment_single_l(l, Delta, sigmas)
+  for (l in 2:7) {
+    sOm   <- sigmas$sigma_Omega
+    sMod  <- sigmas$sigma_A
+    sOm_l <- sigmas$sigmaOmega_l[[as.character(l)]]
+    sMod_l<- sigmas$sigmaA_l[[as.character(l)]]
+    
+    s_common <- sOm + sMod - sOm_l - sMod_l
+    denom   <- sqrt(sOm_l + sMod_l)
+    
+    #
+    
+    f <- function(x) {
+      p <- pnorm((Delta_AB + x * sqrt(s_common)) / denom)
+      p * p * dnorm(x)
+    }
+    
+    M[l] <- midpoint_integral(f, a = -10, b = 10, n = 256)
+  }
+    
+  #M[l] <- moment_single_l(l, Delta_AB2, sigmas)
   M[8] <- AUC*AUC
   M
 }
@@ -225,7 +247,27 @@ moments_single <- function(Delta, sigmas, AUC) {
 moments_cross <- function(DeltaA, DeltaB, sigmas, AUCA, AUCB) {
   M <- numeric(8)
   # l = 1..7 via integral with σΩ(l) (Table 3)
-  for (l in 1:7) M[l] <- moment_cross_l(l, DeltaA, DeltaB, sigmas)
+  for (l in 1:7) {
+    sOm   <- sigmas$sigma_Omega
+    sOm_l <- sigmas$sigmaOmega_l[[as.character(l)]]
+    sA <- sigmas$sigma_A
+    sB <- sigmas$sigma_B
+    
+    s_common <- sOm - sOm_l
+    denomA   <- sqrt(sA + sOm_l)
+    denomB   <- sqrt(sB + sOm_l)
+    
+    f <- function(x) {
+      pA <- pnorm((DeltaA + x * sqrt(s_common)) / denomA)
+      pB <- pnorm((DeltaB + x * sqrt(s_common)) / denomB)
+      pA * pB * dnorm(x)
+    }
+    
+    M[l] <- midpoint_integral(f, a = -10, b = 10, n = 256)
+  }
+    
+    
+  # M[l] <- moment_cross_l(l, DeltaA, DeltaB, sigmas)
   # Special case: l=8 => AUCA * AUCB
   M[8] <- AUCA * AUCB
   M
@@ -750,7 +792,7 @@ mrmc_ss <- function(readers,
   Cov2 <- r2*varE
   Cov3 <- r3*varE
   
-  N_total <- 570
+  N_total <- 200
   n1 <- round(N_total / (1 + ratio))     # diseased
   n0 <- N_total - n1 # non-diseased
   
@@ -814,6 +856,15 @@ mrmc_ss <- function(readers,
   MB  <- as.numeric(moments_df[moments_df$modality == "B", paste0("M", 1:8)])
   MAB <- as.numeric(moments_df[moments_df$modality == "Cross", paste0("M", 1:8)])
   
+  coeffs_v1 <- coeff_vector(N0 = n0, N1 = n1, NR = readers)
+  coeffs_v1_to_print <- as.data.frame(t(coeffs_v1))        
+  colnames(coeffs_v1_to_print) <- paste0("c", 1:8) 
+  
+  
+  # coeffs from Chen, Gong, Gallas 2018 (not including reader)
+  coeffs_v2 <- .c_coeffs(N0 = n0, N1 = n1)
+  coeffs_v2_to_print <- as.data.frame(coeffs_v2)
+  
   # Power function in terms of N0
   f_power <- function(N1) {
     N0 <- ceiling(ratio * N1)
@@ -849,6 +900,8 @@ mrmc_ss <- function(readers,
        AUC1 = AUCA,
        AUC2 = AUCB,
        deltaA = deltaA,
+       N0_pilot = n0,
+       N1_pilot = n1,
        N0 = N0_opt,
        N1 = N1_opt,
        N_total = N0_opt + N1_opt,
@@ -857,14 +910,112 @@ mrmc_ss <- function(readers,
        target_power = target_power,
        alpha = alpha,
        OR_variances = vars_to_print,
-       moments = moments_df)
+       moments = moments_df,
+       coeffs_8 = coeffs_v1_to_print,
+       coeffs_4 = coeffs_v2_to_print)
 }
 
 
 
 
 
+#########################################
+### Format results to check with Java ###
+#########################################
 
+write_imrmc_summary <- function(x,
+                                input_csv_path = "this_is_a_placeholder.csv",
+                                out_path = "imrmc_summary_test.omrmc",
+                                version = "4.0.3",
+                                modality_names = c(A = "TestA", B = "TestB")) {
+  stopifnot(is.list(x), is.character(input_csv_path), is.character(out_path))
+  # pull core fields (with simple safety)
+  nR <- x$readers %||% x[["NReader"]] %||% stop("Missing readers")
+  n0 <- x$N0_pilot %||% stop("Missing N0")
+  n1 <- x$N1_pilot %||% stop("Missing N1")
+  AUC_A <- x$AUC1 %||% stop("Missing AUC1")
+  AUC_B <- x$AUC2 %||% stop("Missing AUC2")
+  
+  # moments: expect a data.frame with columns: modality, M1..M8
+  mm <- x$moments
+  if (is.null(mm) || !all(c("modality", paste0("M", 1:8)) %in% names(mm))) {
+    stop("x$moments must have columns: modality, M1..M8")
+  }
+  # enforce ordering A, B, Cross to match the desired three lines
+  want_order <- c("A", "B", "Cross")
+  if (!all(want_order %in% mm$modality)) {
+    stop("moments$modality must include 'A', 'B', and 'Cross'")
+  }
+  mm <- mm[match(want_order, mm$modality), paste0("M", 1:8), drop = FALSE]
+  
+  # format rules to mimic your example:
+  # - AUCs with 2 decimals
+  # - M1..M7 with 7 decimals
+  # - M8 with 4 decimals
+  fmt_auc <- function(z) sprintf("%.2f", as.numeric(z))
+  fmt_m <- function(v) {
+    v <- as.numeric(v)
+    c(sprintf("%.7f", v[1]),
+      sprintf("%.7f", v[2]),
+      sprintf("%.7f", v[3]),
+      sprintf("%.7f", v[4]),
+      sprintf("%.7f", v[5]),
+      sprintf("%.7f", v[6]),
+      sprintf("%.7f", v[7]),
+      sprintf("%.4f", v[8]))
+  }
+  A_line_vals <- fmt_m(as.numeric(mm[1, ]))
+  B_line_vals <- fmt_m(as.numeric(mm[2, ]))
+  X_line_vals <- fmt_m(as.numeric(mm[3, ]))
+  
+  # modality names (shown in the small header block)
+  modA_name <- modality_names[["A"]] %||% "TestA"
+  modB_name <- modality_names[["B"]] %||% "TestB"
+  
+  # build lines exactly as shown
+  lines <- c(
+    sprintf("MRMC summary statistics from iMRMC Version %s", version),
+    "Summary statistics based on input file named:",
+    input_csv_path,
+    "",
+    "BEGIN SUMMARY",
+    sprintf("NReader=  %d", as.integer(nR)),
+    sprintf("Nnormal=  %d", as.integer(n0)),
+    sprintf("NDisease= %d", as.integer(n1)),
+    "",
+    sprintf("Modality A = %s", modA_name),
+    sprintf("Modality B = %s", modB_name),
+    "",
+    "Reader-Averaged AUCs",
+    sprintf("AUC_A = %s", fmt_auc(AUC_A)),
+    sprintf("AUC_B = %s", fmt_auc(AUC_B)),
+    "",
+    "",
+    "**********************BDG Moments***************************",
+    "         Moments,         M1,         M2,         M3,         M4,         M5,         M6,         M7,         M8",
+    sprintf("Modality1(AUC_A), %s, %s, %s, %s, %s, %s, %s, %s,",
+            A_line_vals[1], A_line_vals[2], A_line_vals[3], A_line_vals[4],
+            A_line_vals[5], A_line_vals[6], A_line_vals[7], A_line_vals[8]),
+    sprintf("Modality2(AUC_B), %s, %s, %s, %s, %s, %s, %s, %s,",
+            B_line_vals[1], B_line_vals[2], B_line_vals[3], B_line_vals[4],
+            B_line_vals[5], B_line_vals[6], B_line_vals[7], B_line_vals[8]),
+    sprintf("    comp product, %s, %s, %s, %s, %s, %s, %s, %s,",
+            X_line_vals[1], X_line_vals[2], X_line_vals[3], X_line_vals[4],
+            X_line_vals[5], X_line_vals[6], X_line_vals[7], X_line_vals[8]),
+    "",
+    "END SUMMARY"
+  )
+  
+  # write
+  con <- file(out_path, open = "w", encoding = "UTF-8")
+  on.exit(close(con), add = TRUE)
+  writeLines(lines, con = con, sep = "\n")
+  
+  invisible(out_path)
+}
+
+# a tiny helper for null-coalescing (so this file is self-contained)
+`%||%` <- function(a, b) if (!is.null(a)) a else b
 
 
 
