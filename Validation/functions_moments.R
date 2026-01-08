@@ -910,6 +910,184 @@ mrmc_ss <- function(readers,
        target_power = target_power,
        alpha = alpha,
        OR_variances = vars_to_print,
+       RMH_components = params,
+       moments = moments_df,
+       coeffs_8 = coeffs_v1_to_print,
+       coeffs_4 = coeffs_v2_to_print)
+}
+
+
+
+
+### take rmh params to get size
+
+mrmc_ss_from_rmh <- function(readers, 
+                    accuracy_level, 
+                    delta, 
+                    ratio, 
+                    sigma_r,
+                    sigma_tr,
+                    sigma_C,
+                    sigma_TC,
+                    sigma_RC,
+                    sigma_trc,
+                    N_total = 200,
+                    design = c("FC","PSP_equal","PSP_unequal"),
+                    G = NULL, NR_groups = NULL,
+                    alpha = 0.05, target_power = 0.80,
+                    search_min = 10, search_max = 5000) {
+  design <- match.arg(design)
+  
+  
+  #### needs to take in MRMC sample size style params (readers, accuracy_level, delta, ratio, rangeb, rangew, r1, r2, r3, rb)
+  
+  ### then these are converted to OR parameters internally
+  
+  # sb <- rangeb/4
+  # sw <- rangew/4
+  # 
+  # lambda <- ncparamF(alpha, 1-target_power, nu1 = 1, nu2 = 1*(readers-1)) #ndf (nu1) is always number of treatments - 1.
+  # K<-1
+  # 
+  # varTR <- sb^2*(1-rb)
+  # varR <- sb^2
+  # varW <- sw^2
+  # num <- ((readers*delta^2)/ (2*lambda)) -  (varTR + sw^2/K)
+  # den <- (1-r1) + (readers-1)*(r2-r3)
+  # 
+  # sigma.square.c = num/den
+  # 
+  # varE <-  sigma.square.c + sw^2
+  # Cov1 <- r1*varE
+  # Cov2 <- r2*varE
+  # Cov3 <- r3*varE
+  # 
+  N_total <- N_total
+  n1 <- round(N_total / (1 + ratio))     # diseased
+  n0 <- N_total - n1 # non-diseased
+  # 
+  # 
+  # vars_to_print<-data.frame(varR=varR, varTR=varTR, varE=varE, Cov1=Cov1, Cov2=Cov2, Cov3=Cov3)
+  # 
+  # #print(vars_to_print)
+  # 
+  # ### then those are converted to RMH parameters, also internally
+  # 
+  # RMH_params <- OR_to_RMH(
+  #   AUC1 = accuracy_level,
+  #   AUC2 = accuracy_level + delta,
+  #   var_R = varR,
+  #   var_TR = varTR,
+  #   corr1 = r1,
+  #   corr2 = r2,
+  #   corr3 = r3,
+  #   n0 = n0,
+  #   n1 = n1,
+  #   var_error = varE,
+  #   b_method = "specified",
+  #   b_input = 1 # this is true under the diseased/nondiseased equal variance assumption
+  #   # b_method = "mean_to_sigma", mean_sig_input = 2
+  # )
+  
+
+  
+  params <- data.frame(AUC1 = accuracy_level,
+           AUC2 = accuracy_level + delta,
+           sigma_r = sigma_r,
+           sigma_tr = sigma_tr,
+           sigma_C = sigma_C,
+           sigma_TC = sigma_TC,
+           sigma_RC = sigma_RC,
+           sigma_trc = sigma_trc) 
+  
+  # %>%
+  #   rename(sigma_r = var_R,
+  #          sigma_tr = var_TR,
+  #          sigma_C = var_C,
+  #          sigma_TC = var_TC,
+  #          sigma_RC = var_RC,
+  #          sigma_trc = var_error)
+  
+  ### then the sample size logic below (from moments), can be used
+  
+  # Extract deltas and AUCs
+  delta1 <- qnorm(params$AUC1) * sqrt(2*(params$sigma_r + params$sigma_C + params$sigma_RC) +
+                                        2*(params$sigma_tr + params$sigma_TC + params$sigma_trc))
+  delta2 <- qnorm(params$AUC2) * sqrt(2*(params$sigma_r + params$sigma_C + params$sigma_RC) +
+                                        2*(params$sigma_tr + params$sigma_TC + params$sigma_trc))
+  
+  # # check delta1 and delta2 from both calculations are equal
+  # print(paste0("delta1: ", round(delta1,3), ", delta2: ", round(delta2,3)))
+  # print(paste0("delta1 from or_to_rmh: ", round(params$delta1,3), ", delta2 from or_to_rmh: ", round(params$delta2,3)))
+  
+  #print(params)
+  
+  AUCA <- params$AUC1
+  AUCB <- params$AUC2
+  deltaA <- AUCB - AUCA
+  
+  # Precompute sigma and moments (independent of N0/N1)
+  sigmas <- build_sigma_sums(params)
+  moments_df <- compute_moments_df(delta1, delta2, sigmas, AUCA, AUCB)
+  MA  <- as.numeric(moments_df[moments_df$modality == "A", paste0("M", 1:8)])
+  MB  <- as.numeric(moments_df[moments_df$modality == "B", paste0("M", 1:8)])
+  MAB <- as.numeric(moments_df[moments_df$modality == "Cross", paste0("M", 1:8)])
+  
+  coeffs_v1 <- coeff_vector(N0 = n0, N1 = n1, NR = readers)
+  coeffs_v1_to_print <- as.data.frame(t(coeffs_v1))        
+  colnames(coeffs_v1_to_print) <- paste0("c", 1:8) 
+  
+  
+  # coeffs from Chen, Gong, Gallas 2018 (not including reader)
+  coeffs_v2 <- .c_coeffs(N0 = n0, N1 = n1)
+  coeffs_v2_to_print <- as.data.frame(coeffs_v2)
+  
+  # Power function in terms of N0
+  f_power <- function(N1) {
+    N0 <- ceiling(ratio * N1)
+    varD <- var_deltaA(MA, MB, MAB, N0, N1, readers, design = design, G = G, NR_groups = NR_groups)
+    power_two_sided(deltaA, varD, alpha = alpha)
+  }
+  
+  # Function for root finding: f(N1) - target_power = 0
+  f_root <- function(N1) f_power(N1) - target_power
+  
+  # Check feasibility
+  if (f_root(search_max) < 0) {
+    return(list(feasible = FALSE, design = design, readers = readers, ratio = ratio,
+                AUC1 = AUCA, AUC2 = AUCB, deltaA = deltaA,
+                N0 = NA, N1 = NA, var_delta = NA,
+                achieved_power = f_power(search_max),
+                target_power = target_power, alpha = alpha))
+  }
+  
+  # Solve for N0 using uniroot
+  sol <- uniroot(f_root, lower = search_min, upper = search_max)
+  
+  N1_opt <- ceiling(sol$root)
+  N0_opt <- ceiling(ratio * N1_opt)
+  
+  varD_opt <- var_deltaA(MA, MB, MAB, N0_opt, N1_opt, readers, design = design, G = G, NR_groups = NR_groups)
+  power_opt <- power_two_sided(deltaA, varD_opt, alpha = alpha)
+  
+  list(feasible = TRUE,
+       design = design,
+       readers = readers,
+       ratio = ratio,
+       AUC1 = AUCA,
+       AUC2 = AUCB,
+       deltaA = deltaA,
+       N0_pilot = n0,
+       N1_pilot = n1,
+       N0 = N0_opt,
+       N1 = N1_opt,
+       N_total = N0_opt + N1_opt,
+       var_deltaA = varD_opt,
+       achieved_power = power_opt,
+       target_power = target_power,
+       alpha = alpha,
+       #OR_variances = vars_to_print,
+       RMH_components = params,
        moments = moments_df,
        coeffs_8 = coeffs_v1_to_print,
        coeffs_4 = coeffs_v2_to_print)
@@ -923,56 +1101,160 @@ mrmc_ss <- function(readers,
 ### Format results to check with Java ###
 #########################################
 
+# write_imrmc_summary <- function(x,
+#                                 input_csv_path = "this_is_a_placeholder.csv",
+#                                 out_path = "imrmc_summary_test.omrmc",
+#                                 version = "4.0.3",
+#                                 modality_names = c(A = "TestA", B = "TestB")) {
+#   stopifnot(is.list(x), is.character(input_csv_path), is.character(out_path))
+#   # pull core fields (with simple safety)
+#   nR <- x$readers %||% x[["NReader"]] %||% stop("Missing readers")
+#   n0 <- x$N0_pilot %||% stop("Missing N0")
+#   n1 <- x$N1_pilot %||% stop("Missing N1")
+#   AUC_A <- x$AUC1 %||% stop("Missing AUC1")
+#   AUC_B <- x$AUC2 %||% stop("Missing AUC2")
+#   
+#   # moments: expect a data.frame with columns: modality, M1..M8
+#   mm <- x$moments
+#   if (is.null(mm) || !all(c("modality", paste0("M", 1:8)) %in% names(mm))) {
+#     stop("x$moments must have columns: modality, M1..M8")
+#   }
+#   # enforce ordering A, B, Cross to match the desired three lines
+#   want_order <- c("A", "B", "Cross")
+#   if (!all(want_order %in% mm$modality)) {
+#     stop("moments$modality must include 'A', 'B', and 'Cross'")
+#   }
+#   mm <- mm[match(want_order, mm$modality), paste0("M", 1:8), drop = FALSE]
+#   
+#   # format rules to mimic your example:
+#   # - AUCs with 2 decimals
+#   # - M1..M7 with 7 decimals
+#   # - M8 with 4 decimals
+#   fmt_auc <- function(z) sprintf("%.2f", as.numeric(z))
+#   fmt_m <- function(v) {
+#     v <- as.numeric(v)
+#     c(sprintf("%.7f", v[1]),
+#       sprintf("%.7f", v[2]),
+#       sprintf("%.7f", v[3]),
+#       sprintf("%.7f", v[4]),
+#       sprintf("%.7f", v[5]),
+#       sprintf("%.7f", v[6]),
+#       sprintf("%.7f", v[7]),
+#       sprintf("%.4f", v[8]))
+#   }
+#   A_line_vals <- fmt_m(as.numeric(mm[1, ]))
+#   B_line_vals <- fmt_m(as.numeric(mm[2, ]))
+#   X_line_vals <- fmt_m(as.numeric(mm[3, ]))
+#   
+#   # modality names (shown in the small header block)
+#   modA_name <- modality_names[["A"]] %||% "TestA"
+#   modB_name <- modality_names[["B"]] %||% "TestB"
+#   
+#   # build lines exactly as shown
+#   lines <- c(
+#     sprintf("MRMC summary statistics from iMRMC Version %s", version),
+#     "Summary statistics based on input file named:",
+#     input_csv_path,
+#     "",
+#     "BEGIN SUMMARY",
+#     sprintf("NReader=  %d", as.integer(nR)),
+#     sprintf("Nnormal=  %d", as.integer(n0)),
+#     sprintf("NDisease= %d", as.integer(n1)),
+#     "",
+#     sprintf("Modality A = %s", modA_name),
+#     sprintf("Modality B = %s", modB_name),
+#     "",
+#     "Reader-Averaged AUCs",
+#     sprintf("AUC_A = %s", fmt_auc(AUC_A)),
+#     sprintf("AUC_B = %s", fmt_auc(AUC_B)),
+#     "",
+#     "",
+#     "**********************BDG Moments***************************",
+#     "         Moments,         M1,         M2,         M3,         M4,         M5,         M6,         M7,         M8",
+#     sprintf("Modality1(AUC_A), %s, %s, %s, %s, %s, %s, %s, %s,",
+#             A_line_vals[1], A_line_vals[2], A_line_vals[3], A_line_vals[4],
+#             A_line_vals[5], A_line_vals[6], A_line_vals[7], A_line_vals[8]),
+#     sprintf("Modality2(AUC_B), %s, %s, %s, %s, %s, %s, %s, %s,",
+#             B_line_vals[1], B_line_vals[2], B_line_vals[3], B_line_vals[4],
+#             B_line_vals[5], B_line_vals[6], B_line_vals[7], B_line_vals[8]),
+#     sprintf("    comp product, %s, %s, %s, %s, %s, %s, %s, %s,",
+#             X_line_vals[1], X_line_vals[2], X_line_vals[3], X_line_vals[4],
+#             X_line_vals[5], X_line_vals[6], X_line_vals[7], X_line_vals[8]),
+#     "",
+#     "END SUMMARY"
+#   )
+#   
+#   # write
+#   con <- file(out_path, open = "w", encoding = "UTF-8")
+#   on.exit(close(con), add = TRUE)
+#   writeLines(lines, con = con, sep = "\n")
+#   
+#   invisible(out_path)
+# }
+# 
+# a tiny helper for null-coalescing (so this file is self-contained)
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+
 write_imrmc_summary <- function(x,
+                                reader_specific,
                                 input_csv_path = "this_is_a_placeholder.csv",
                                 out_path = "imrmc_summary_test.omrmc",
                                 version = "4.0.3",
                                 modality_names = c(A = "TestA", B = "TestB")) {
   stopifnot(is.list(x), is.character(input_csv_path), is.character(out_path))
-  # pull core fields (with simple safety)
-  nR <- x$readers %||% x[["NReader"]] %||% stop("Missing readers")
-  n0 <- x$N0_pilot %||% stop("Missing N0")
-  n1 <- x$N1_pilot %||% stop("Missing N1")
+  `%||%` <- function(a, b) if (!is.null(a)) a else b
+  
+  # core fields
+  nR    <- x$readers %||% x[["NReader"]] %||% stop("Missing readers")
+  n0    <- x$N0_pilot %||% stop("Missing N0")
+  n1    <- x$N1_pilot %||% stop("Missing N1")
   AUC_A <- x$AUC1 %||% stop("Missing AUC1")
   AUC_B <- x$AUC2 %||% stop("Missing AUC2")
   
-  # moments: expect a data.frame with columns: modality, M1..M8
+  # reader ids and per-reader AUCs/SEs
+  rid   <- reader_specific$reader_ids %||% seq_len(nR)
+  aucA_r <- reader_specific$reader_auc_A %||% stop("Provide reader_specific$reader_auc_A (length NReader)")
+  aucB_r <- reader_specific$reader_auc_B %||% stop("Provide reader_specific$reader_auc_B (length NReader)")
+  seA_r  <- reader_specific$reader_se_A %||% rep(NA_real_, nR)
+  seB_r  <- reader_specific$reader_se_B %||% rep(NA_real_, nR)
+  
+  # optional per-reader diffs
+  have_diff <- !is.null(reader_specific$reader_auc_diff) || !is.null(reader_specific$reader_se_diff)
+  if (have_diff) {
+    d_r  <- reader_specific$reader_auc_diff %||% (aucA_r - aucB_r)
+    sd_r <- reader_specific$reader_se_diff %||% rep(NA_real_, nR)
+  }
+  
+  # moments: expect data.frame with columns: modality, M1..M8
   mm <- x$moments
   if (is.null(mm) || !all(c("modality", paste0("M", 1:8)) %in% names(mm))) {
-    stop("x$moments must have columns: modality, M1..M8")
+    stop("x$moments must have columns: modality, M1..M8 and rows 'A','B','Cross'")
   }
-  # enforce ordering A, B, Cross to match the desired three lines
   want_order <- c("A", "B", "Cross")
   if (!all(want_order %in% mm$modality)) {
     stop("moments$modality must include 'A', 'B', and 'Cross'")
   }
   mm <- mm[match(want_order, mm$modality), paste0("M", 1:8), drop = FALSE]
   
-  # format rules to mimic your example:
-  # - AUCs with 2 decimals
-  # - M1..M7 with 7 decimals
-  # - M8 with 4 decimals
-  fmt_auc <- function(z) sprintf("%.2f", as.numeric(z))
-  fmt_m <- function(v) {
-    v <- as.numeric(v)
-    c(sprintf("%.7f", v[1]),
-      sprintf("%.7f", v[2]),
-      sprintf("%.7f", v[3]),
-      sprintf("%.7f", v[4]),
-      sprintf("%.7f", v[5]),
-      sprintf("%.7f", v[6]),
-      sprintf("%.7f", v[7]),
-      sprintf("%.4f", v[8]))
+  # formatting helpers (match screenshot style)
+  fmt_auc2   <- function(z) sprintf("%.3f", as.numeric(z))       # header AUCs like 0.757
+  fmt_diff2  <- function(z) sprintf("%.3f", as.numeric(z))
+  fmt_mline  <- function(v) { v <- as.numeric(v); c(sprintf("%.7f", v[1:7]), sprintf("%.4f", v[8])) }
+  fmt_sci    <- function(z) {                                   # per-reader lines like 7.78800E-1
+    s <- sprintf("%.5E", as.numeric(z))
+    sub("E-0", "E-", sub("E\\+0", "E+", s))                     # remove leading zero in exponent
   }
-  A_line_vals <- fmt_m(as.numeric(mm[1, ]))
-  B_line_vals <- fmt_m(as.numeric(mm[2, ]))
-  X_line_vals <- fmt_m(as.numeric(mm[3, ]))
+  fmt_se     <- function(z) ifelse(is.na(z), "", sprintf("%.5E", z))
   
-  # modality names (shown in the small header block)
+  A_line_vals <- fmt_mline(as.numeric(mm[1, ]))
+  B_line_vals <- fmt_mline(as.numeric(mm[2, ]))
+  X_line_vals <- fmt_mline(as.numeric(mm[3, ]))
+  
   modA_name <- modality_names[["A"]] %||% "TestA"
   modB_name <- modality_names[["B"]] %||% "TestB"
   
-  # build lines exactly as shown
+  # ---- Build the text lines ----
   lines <- c(
     sprintf("MRMC summary statistics from iMRMC Version %s", version),
     "Summary statistics based on input file named:",
@@ -987,9 +1269,46 @@ write_imrmc_summary <- function(x,
     sprintf("Modality B = %s", modB_name),
     "",
     "Reader-Averaged AUCs",
-    sprintf("AUC_A = %s", fmt_auc(AUC_A)),
-    sprintf("AUC_B = %s", fmt_auc(AUC_B)),
+    sprintf("AUC_A = %s", fmt_auc2(AUC_A)),
+    sprintf("AUC_B = %s", fmt_auc2(AUC_B)),
+    sprintf("AUC_A - AUC_B = %s", fmt_diff2(AUC_A - AUC_B)),
     "",
+    "Reader Specific AUCs",
+    "MOD A",
+    "Reader ID,    Normal_Case,    Disease_Case,         AUC,       STDAUC"
+  )
+  
+  # per-reader lines for MOD A
+  for (i in seq_len(nR)) {
+    lines <- c(lines, sprintf("%-10s,%6d,%12d,%13s,%12s",
+                              as.character(rid[i]), n0, n1,
+                              fmt_sci(aucA_r[i]), fmt_se(seA_r[i])))
+  }
+  
+  # MOD B block
+  lines <- c(lines, "MOD B",
+             "Reader ID,    Normal_Case,    Disease_Case,         AUC,       STDAUC")
+  for (i in seq_len(nR)) {
+    lines <- c(lines, sprintf("%-10s,%6d,%12d,%13s,%12s",
+                              as.character(rid[i]), n0, n1,
+                              fmt_sci(aucB_r[i]), fmt_se(seB_r[i])))
+  }
+  
+  # Optional: difference block
+  if (have_diff) {
+    lines <- c(lines,
+               "Difference between MODs A and B",
+               "Reader ID,    Normal_Case,    Disease_Case,         AUC,       STDAUC")
+    for (i in seq_len(nR)) {
+      lines <- c(lines, sprintf("%-10s,%6d,%12d,%13s,%12s",
+                                as.character(rid[i]), n0, n1,
+                                fmt_sci(d_r[i]), fmt_se(sd_r[i])))
+    }
+  }
+  
+  # Moments footer
+  lines <- c( 
+    lines,
     "",
     "**********************BDG Moments***************************",
     "         Moments,         M1,         M2,         M3,         M4,         M5,         M6,         M7,         M8",
@@ -1006,16 +1325,150 @@ write_imrmc_summary <- function(x,
     "END SUMMARY"
   )
   
-  # write
+  # write file
   con <- file(out_path, open = "w", encoding = "UTF-8")
   on.exit(close(con), add = TRUE)
   writeLines(lines, con = con, sep = "\n")
-  
   invisible(out_path)
 }
 
-# a tiny helper for null-coalescing (so this file is self-contained)
-`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+
+
+
+# convert BDG to OR format using logic from java app
+### still working on getting this into a format that takes parameters we have 
+
+BDG2OR_from_java <- function(
+    Nreader, Nnormal, Ndisease,
+    AUCs, AUCsReaderAvg,
+    BDG_moments) {
+  
+  dnr <- as.numeric(Nreader)
+  dn0 <- as.numeric(Nnormal)
+  dn1 <- as.numeric(Ndisease)
+  
+  # coefficients for BDG → {error, cov1, cov2, cov3}
+  c1 <- 1.0 / (dn0 * dn1)
+  c2 <- (dn0 - 1.0) / (dn0 * dn1)
+  c3 <- (dn1 - 1.0) / (dn0 * dn1)
+  c4 <- ((dn0 - 1.0) * (dn1 - 1.0)) / (dn0 * dn1) - 1.0
+  
+  # mean squares
+  ms_r <- 0
+  ms_rA <- 0
+  ms_rB <- 0
+  ms_t  <- 0
+  ms_tr <- 0
+  
+  for (i in 1:2) {  # modality A = 1, B = 2
+    temp_mst <- AUCsReaderAvg[i] - mean(AUCsReaderAvg)
+    ms_t <- ms_t + temp_mst^2
+    
+    for (j in 1:dnr) {
+      temp_mstr <- AUCs[j, i] - AUCsReaderAvg[i] - ((AUCs[j, 1] + AUCs[j,2])/2) + mean(AUCsReaderAvg)
+      ms_tr <- ms_tr + temp_mstr^2
+    }
+  }
+  
+  ms_t  <- dnr*ms_t/(2 - 1)
+  ms_tr <- ms_tr/((2-1)*(dnr - 1))
+  
+  for (j in 1:dnr) {
+    temp_msra <- AUCs[j, 1] - AUCsReaderAvg[1]
+    ms_rA <- ms_rA + temp_msra^2
+    
+    temp_msrb <- AUCs[j, 2] - AUCsReaderAvg[2]
+    ms_rB <- ms_rB + temp_msrb^2
+    
+    temp_msr <- (AUCs[j, 1] + AUCs[j, 2])/2.0 - (AUCsReaderAvg[1] + AUCsReaderAvg[2])/2.0
+    ms_r <- ms_r + temp_msr^2
+  }
+  
+  
+  ms_rA <- ms_rA/(dnr - 1.0)
+  ms_rB <- ms_rB/(dnr - 1.0)
+  ms_r  <- 2*ms_r/(dnr - 1.0)
+  
+  # BDG linear combos (same as Java)
+  errorA <- c1*BDG_moments[1,1] + c2*BDG_moments[1,2] + c3*BDG_moments[1,3] + c4*BDG_moments[1,4]
+  cov1A <- 0
+  cov2A  <- c1*BDG_moments[1,5] + c2*BDG_moments[1,6] + c3*BDG_moments[1,7] + c4*BDG_moments[1,8]
+  cov3A <- 0
+  
+  errorB <- c1*BDG_moments[2,1] + c2*BDG_moments[2,2] + c3*BDG_moments[2,3] + c4*BDG_moments[2,4]
+  cov1B <- 0
+  cov2B  <- c1*BDG_moments[2,5] + c2*BDG_moments[2,6] + c3*BDG_moments[2,7] + c4*BDG_moments[2,8]
+  cov3B <- 0
+  
+  error <- (errorA + errorB) / 2.0
+  cov1  <- c1*BDG_moments[3,1] + c2*BDG_moments[3,2] + c3*BDG_moments[3,3] + c4*BDG_moments[3,4]
+  cov2  <- (cov2A + cov2B) / 2.0
+  cov3  <- c1*BDG_moments[3,5] + c2*BDG_moments[3,6] + c3*BDG_moments[3,7] + c4*BDG_moments[3,8]
+  
+  # single-modality
+  var_rA  <- ms_rA + cov2A - errorA
+  var_mrA <- 0.0
+  var_rB  <- ms_rB + cov2B - errorB
+  var_mrB <- 0.0
+  
+  # combined modality
+  ms_tr <- 1.10950E-3 + error - cov1 - (cov2 - cov3)
+  ms_r <- (7.99820E-1 + cov1 - cov3)*2 + ms_tr
+  var_r  <- (ms_r - ms_tr) / 2.0 - cov1 + cov3
+  var_mr <-  ms_tr - error + cov1 + (cov2 - cov3)
+  
+
+  
+  OR <- matrix(NA_real_, nrow = 3, ncol = 6,
+               dimnames = list(c("A", "B", "AB"),
+                               c("var_r", "var_tr", "cov1", "cov2", "cov3", "error")))
+  OR[1, ] <- c(var_rA, var_mrA, cov1A,  cov2A, cov3A, errorA)
+  OR[2, ] <- c(var_rB, var_mrB, cov1B,  cov2B, cov3B, errorB)
+  OR[3, ] <- c(var_r,  var_mr,  cov1, cov2,  cov3, error)
+  
+  list(
+    OR = OR,
+    diagnostics = list(
+      ms_rA = ms_rA, ms_rB = ms_rB, ms_r = ms_r, ms_tr = ms_tr,
+      c1 = c1, c2 = c2, c3 = c3, c4 = c4
+    )
+  )
+}
+
+# # AUCsReaderAvg_test <- c(0.75, 0.80)
+# AUCs_test <- matrix(c(
+#   7.54700E-1, 7.95000E-1,
+#   7.49826E-1, 7.98000E-1,
+#   7.58339E-1, 8.02000E-1,
+#   7.60483E-1, 8.05000E-1
+# ), nrow = 4, byrow = TRUE)
+# 
+# AUCsReaderAvg_test <- colMeans(AUCs_test)  # matches AUCsReaderAvg_test
+# 
+# AUCs_test_equal <- matrix(c(
+#   0.75, 0.80,
+#   0.75, 0.80,
+#   0.75, 0.80,
+#   0.75, 0.80
+# ), nrow = 4, byrow = TRUE)
+# 
+# moments <- test_write_csv$moments[,-1]
+# 
+# 
+# BDG2OR_from_java(Nreader = 4, Nnormal = 100, Ndisease = 100,
+#                  AUCs = AUCs_test, AUCsReaderAvg = AUCsReaderAvg_test, 
+#                  BDG_moments = moments)
+# # cov1, cov2, cov3, and error match Java output
+# ### something is going on with var_r and var_tr
+
+
+
+
+
+
+
+
 
 
 

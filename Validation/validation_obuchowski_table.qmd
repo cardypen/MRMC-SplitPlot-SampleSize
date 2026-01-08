@@ -44,11 +44,22 @@ test_write_csv<-mrmc_ss(readers = 4, accuracy_level = 0.75,
                             alpha = 0.05, target_power = 0.80,
                             search_min = 10, search_max = 5000)
 
-write_imrmc_summary(test_write_csv)
+write_imrmc_summary(test_write_csv,
+                    reader_specific = list(reader_ids   = c(2,3,4,"reader1"),
+                                           reader_auc_A = rnorm(4, 0.75, 0.0025),
+                                           reader_se_A  = rnorm(4, c(0.00125, 0.00125, 0.00125, 0.00125), 0.0001),
+                                           reader_auc_B = rnorm(4, 0.8, 0.0025),
+                                           reader_se_B  = rnorm(4, c(0.00125, 0.00125, 0.00125, 0.00125), 0.0001)
+                                           # optional diff section:
+                                           # reader_auc_diff = c(-.05, -.05, .0848, .0540, .0932),
+                                           # reader_se_diff  = c(.0493, .0534, .0588, .0531, .0534),
+                                           ))
 
 test_write_csv$OR_variances
+test_write_csv$RMH_components
 test_write_csv$coeffs_8
 test_write_csv$coeffs_4
+test_write_csv$moments
 
 
 # sampleSize_MRMC(endpoint = "auc",

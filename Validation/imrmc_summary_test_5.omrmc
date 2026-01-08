@@ -1,0 +1,38 @@
+MRMC summary statistics from iMRMC Version 4.0.3
+Summary statistics based on input file named:
+this_is_a_placeholder.csv
+
+BEGIN SUMMARY
+NReader=  4
+Nnormal=  100
+NDisease= 100
+
+Modality A = TestA
+Modality B = TestB
+
+Reader-Averaged AUCs
+AUC_A = 0.750
+AUC_B = 0.800
+AUC_A - AUC_B = -0.050
+
+Reader Specific AUCs
+MOD A
+Reader ID,    Normal_Case,    Disease_Case,         AUC,       STDAUC
+2         ,   100,         100,   7.54243E-1, 1.25771E-03
+3         ,   100,         100,   7.55644E-1, 1.14307E-03
+4         ,   100,         100,   7.46191E-1, 1.21452E-03
+reader1   ,   100,         100,   7.45640E-1, 1.35782E-03
+MOD B
+Reader ID,    Normal_Case,    Disease_Case,         AUC,       STDAUC
+2         ,   100,         100,   7.94133E-1, 1.19912E-03
+3         ,   100,         100,   8.01507E-1, 1.30914E-03
+4         ,   100,         100,   7.98533E-1, 1.35144E-03
+reader1   ,   100,         100,   7.98597E-1, 1.13637E-03
+
+**********************BDG Moments***************************
+         Moments,         M1,         M2,         M3,         M4,         M5,         M6,         M7,         M8
+Modality1(AUC_A), 0.7500000, 0.6202808, 0.6202808, 0.5625084, 0.5997592, 0.5803181, 0.5803181, 0.5625,
+Modality2(AUC_B), 0.8000000, 0.6871554, 0.6871554, 0.6400066, 0.6699881, 0.6541039, 0.6541039, 0.6400,
+    comp product, 0.6541231, 0.6248018, 0.6248018, 0.6000062, 0.6333381, 0.6158330, 0.6158330, 0.6000,
+
+END SUMMARY
